@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const assert = require('assert');
+const ts = require('typescript');
 
 let passedTests = 0;
 let failedTests = 0;
@@ -261,42 +262,13 @@ test('Attendance', 'Bulk Class actions modify only target subject and target dat
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\nSECTION 9: Simple Quick Command Grammar & Execution');
 
-function validateQuickCommand(commandStr, studentRoster) {
-  if (!commandStr || !commandStr.trim()) {
-    return { isValid: false, error: 'Command cannot be empty. Example: P:113,144,102' };
-  }
-  if (/\s/.test(commandStr)) {
-    return { isValid: false, error: 'Command must not contain spaces.' };
-  }
-  if (commandStr.startsWith('p:') || commandStr.startsWith('a:')) {
-    return { isValid: false, error: 'Command letter must be uppercase P or A.' };
-  }
-  if (commandStr.endsWith(',')) {
-    return { isValid: false, error: 'Command must not end with a trailing comma.' };
-  }
-  if (commandStr.includes(',,')) {
-    return { isValid: false, error: 'Command contains empty number between commas.' };
-  }
-  const match = commandStr.match(/^([PA]):([0-9]+(?:,[0-9]+)*)$/);
-  if (!match) {
-    if (/[a-zA-Z]/.test(commandStr.slice(2))) {
-      return { isValid: false, error: 'Roll numbers must contain digits only.' };
-    }
-    return { isValid: false, error: 'Invalid syntax. Must be P:number,number or A:number,number.' };
-  }
-  const action = match[1];
-  const rawList = match[2].split(',');
-  const uniqueNumbers = Array.from(new Set(rawList));
-  const missingNumbers = [];
-  for (const num of uniqueNumbers) {
-    const exists = studentRoster.some((p) => String(p.rollNumber || '').trim() === num);
-    if (!exists) missingNumbers.push(num);
-  }
-  if (missingNumbers.length > 0) {
-    return { isValid: false, error: `Roll No / ID ${missingNumbers.join(', ')} does not exist.` };
-  }
-  return { isValid: true, action, rollNumbers: uniqueNumbers };
-}
+const parserTsPath = path.join(__dirname, '../src/utils/quickCommandParser.ts');
+const parserCode = ts.transpileModule(fs.readFileSync(parserTsPath, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
+}).outputText;
+const parserMod = { exports: {} };
+new Function('exports', 'module', 'require', parserCode)(parserMod.exports, parserMod, require);
+const { validateQuickCommand } = parserMod.exports;
 
 const mockRoster = [
   { id: 'p1', name: 'A', rollNumber: '113' },
@@ -304,7 +276,13 @@ const mockRoster = [
   { id: 'p3', name: 'C', rollNumber: '102' },
   { id: 'p4', name: 'D', rollNumber: '155' },
   { id: 'p5', name: 'E', rollNumber: '222' },
-  { id: 'p6', name: 'F', rollNumber: '109' }
+  { id: 'p6', name: 'F', rollNumber: '109' },
+  { id: 'p100', name: 'S100', rollNumber: '100' },
+  { id: 'p101', name: 'S101', rollNumber: '101' },
+  { id: 'p102b', name: 'S102b', rollNumber: '102' },
+  { id: 'p103', name: 'S103', rollNumber: '103' },
+  { id: 'p104', name: 'S104', rollNumber: '104' },
+  { id: 'p105', name: 'S105', rollNumber: '105' },
 ];
 
 test('Simple Quick', 'Valid P:113,144,102', () => {
@@ -319,6 +297,36 @@ test('Simple Quick', 'Valid A:155,222,109', () => {
   assert.strictEqual(res.isValid, true);
   assert.strictEqual(res.action, 'A');
   assert.deepStrictEqual(res.rollNumbers, ['155', '222', '109']);
+});
+
+test('Simple Quick', 'Valid Range P:100:105', () => {
+  const res = validateQuickCommand('P:100:105', mockRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.action, 'P');
+  assert.deepStrictEqual(res.rollNumbers, ['100', '101', '102', '103', '104', '105']);
+});
+
+test('Simple Quick', 'Valid Range A:100:105', () => {
+  const res = validateQuickCommand('A:100:105', mockRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.action, 'A');
+  assert.deepStrictEqual(res.rollNumbers, ['100', '101', '102', '103', '104', '105']);
+});
+
+test('Simple Quick', 'Valid Single Range P:100:100', () => {
+  const res = validateQuickCommand('P:100:100', mockRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.deepStrictEqual(res.rollNumbers, ['100']);
+});
+
+test('Simple Quick', 'Valid Mixed P:100:102,113', () => {
+  const res = validateQuickCommand('P:100:102,113', mockRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.deepStrictEqual(res.rollNumbers, ['100', '101', '102', '113']);
+});
+
+test('Simple Quick', 'Invalid: reversed range P:105:100', () => {
+  assert.strictEqual(validateQuickCommand('P:105:100', mockRoster).isValid, false);
 });
 
 test('Simple Quick', 'Invalid: lowercase p:113,144', () => {
@@ -406,8 +414,6 @@ test('Backup/Restore', 'Valid backup roundtrip schema', () => {
 // 10. PDF EXPORT & PAGINATION
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\nSECTION 15: PDF Export Multi-Page Generation');
-
-const ts = require('typescript');
 
 const thresholdsPath = path.join(__dirname, '../src/utils/thresholds.ts');
 const pdfExportPath = path.join(__dirname, '../src/utils/pdfExport.ts');

@@ -228,9 +228,9 @@ export const getWeekdayForDate = (dateStr: string): 'Monday' | 'Tuesday' | 'Wedn
 };
 
 /**
- * Returns the subjects scheduled for a given date according to the weekly timetable.
+ * Returns the default subjects scheduled for a given date according to the weekly timetable.
  */
-export const getSubjectsForDate = (
+export const getDefaultSubjectsForDate = (
   dateStr: string,
   timetable?: Record<string, { id: string; name: string }[]>
 ): { id: string; name: string }[] => {
@@ -238,4 +238,78 @@ export const getSubjectsForDate = (
   const weekday = getWeekdayForDate(dateStr);
   return timetable[weekday] || [];
 };
+
+/**
+ * Checks whether an explicit date-specific schedule override exists for a date.
+ */
+export const hasDateScheduleOverride = (
+  dateStr: string,
+  dateScheduleOverrides?: Record<string, unknown>
+): boolean => {
+  return Boolean(
+    dateScheduleOverrides &&
+      dateStr &&
+      Object.prototype.hasOwnProperty.call(dateScheduleOverrides, dateStr) &&
+      dateScheduleOverrides[dateStr] !== undefined
+  );
+};
+
+/**
+ * Returns the effective subjects scheduled for a given date.
+ * If an explicit date-specific schedule override exists, it is used.
+ * Otherwise, falls back to the default weekly timetable schedule.
+ */
+export const getSubjectsForDate = (
+  dateStr: string,
+  timetable?: Record<string, { id: string; name: string }[]>,
+  dateScheduleOverrides?: Record<string, (string | { id?: string; name: string })[]>
+): { id: string; name: string }[] => {
+  if (!dateStr) return [];
+
+  // Check if an explicit override exists for this date
+  if (
+    dateScheduleOverrides &&
+    Object.prototype.hasOwnProperty.call(dateScheduleOverrides, dateStr) &&
+    dateScheduleOverrides[dateStr] !== undefined
+  ) {
+    const overrideList = dateScheduleOverrides[dateStr];
+    if (Array.isArray(overrideList)) {
+      // Find matching IDs from timetable if possible, otherwise generate stable IDs
+      const allTimetableSubjects: { id: string; name: string }[] = [];
+      if (timetable) {
+        for (const list of Object.values(timetable)) {
+          if (Array.isArray(list)) {
+            allTimetableSubjects.push(...list);
+          }
+        }
+      }
+
+      return overrideList
+        .map((item, idx) => {
+          if (typeof item === 'string') {
+            const trimmed = item.trim();
+            const match = allTimetableSubjects.find(
+              (s) => s.name && s.name.trim().toLowerCase() === trimmed.toLowerCase()
+            );
+            const id = match ? match.id : `override-${trimmed.toLowerCase().replace(/[^a-z0-9]/g, '-') || idx}`;
+            return { id, name: trimmed };
+          } else if (item && typeof item === 'object') {
+            const name = item.name ? item.name.trim() : '';
+            const match = allTimetableSubjects.find(
+              (s) => s.name && s.name.trim().toLowerCase() === name.toLowerCase()
+            );
+            const id = item.id || (match ? match.id : `override-${name.toLowerCase().replace(/[^a-z0-9]/g, '-') || idx}`);
+            return { id, name };
+          }
+          return { id: `override-${idx}`, name: String(item) };
+        })
+        .filter((s) => s.name.length > 0);
+    }
+  }
+
+  if (!timetable) return [];
+  const weekday = getWeekdayForDate(dateStr);
+  return timetable[weekday] || [];
+};
+
 

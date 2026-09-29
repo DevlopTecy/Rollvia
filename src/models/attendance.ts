@@ -69,6 +69,7 @@ export interface AttendanceMetadata {
   spreadsheetId?: string;
   spreadsheetUrl?: string;
   weeklyTimetable?: Record<string, { id: string; name: string }[]>;
+  dateScheduleOverrides?: Record<string, string[]>;
   selectedMonth?: string;
   selectedYear?: number;
   selectedMonthIndex?: number;

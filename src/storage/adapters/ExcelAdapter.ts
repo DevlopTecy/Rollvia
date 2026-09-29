@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import type { AttendanceDataset, AttendanceRecord, AttendanceStatusValue } from '../../models/attendance';
 import type { Person, WeeklyTimetable } from '../../types';
 import type { StorageAdapter, StorageSaveResult, StorageValidationResult, TabularData, StorageReadResult } from '../types';
+import { getSubjectsForDate } from '../../utils/calendar';
 
 /**
  * Standard table column headers for Excel attendance records (legacy & raw data schema):
@@ -472,6 +473,14 @@ export class ExcelAdapter implements StorageAdapter {
    * 3. Other preserved sheets
    * 4. _AttendanceData (hidden normalized records)
    */
+  public generateWorkbook(
+    dataset: AttendanceDataset,
+    existingRecords: AttendanceRecord[] = [],
+    existingWorkbook?: XLSX.WorkBook
+  ): XLSX.WorkBook {
+    return this.buildWorkbookData(dataset, existingRecords, existingWorkbook);
+  }
+
   private buildWorkbookData(
     dataset: AttendanceDataset,
     existingRecords: AttendanceRecord[],
@@ -537,6 +546,7 @@ export class ExcelAdapter implements StorageAdapter {
     // 3. Resolve dates and timetable subjects for this month
     const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
     const timetable = (dataset.metadata?.weeklyTimetable || {}) as WeeklyTimetable;
+    const dateOverrides = (dataset.metadata?.dateScheduleOverrides || {}) as Record<string, string[]>;
 
     // Group records by date -> studentKey -> class -> status
     const recordsByDateStudentClass = new Map<string, Map<string, Map<string, AttendanceStatusValue>>>();
@@ -568,7 +578,8 @@ export class ExcelAdapter implements StorageAdapter {
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const weekday = getWeekdayForDate(dateStr) as keyof WeeklyTimetable;
-      const dayTimetableSubjects = timetable[weekday] ? timetable[weekday].map((s) => s.name.trim()) : [];
+      const scheduledSubs = getSubjectsForDate(dateStr, timetable, dateOverrides);
+      const dayTimetableSubjects = scheduledSubs.map((s) => s.name.trim());
 
       // Check if any records exist for this date with additional subjects
       const dateRecordsMap = recordsByDateStudentClass.get(dateStr);

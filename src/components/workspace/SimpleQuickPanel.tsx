@@ -9,6 +9,7 @@ interface SimpleQuickPanelProps {
   onClose: () => void;
   people: Person[];
   weeklyTimetable: WeeklyTimetable;
+  dateScheduleOverrides?: Record<string, string[]>;
   currentActiveDate: string;
   onApplyQuickAttendance: (
     dateStr: string,
@@ -26,6 +27,7 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
   onClose,
   people,
   weeklyTimetable,
+  dateScheduleOverrides,
   currentActiveDate,
   onApplyQuickAttendance,
   onRegisterFocus,
@@ -98,8 +100,8 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
 
   // Available classes for target date
   const availableClasses: TimetableSubject[] = useMemo(() => {
-    return getSubjectsForDate(targetDateStr, weeklyTimetable);
-  }, [targetDateStr, weeklyTimetable]);
+    return getSubjectsForDate(targetDateStr, weeklyTimetable, dateScheduleOverrides);
+  }, [targetDateStr, weeklyTimetable, dateScheduleOverrides]);
 
   // Selected class
   const [selectedClassId, setSelectedClassId] = useState<string>('');
@@ -341,7 +343,7 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
 
       {/* ── Panel Body ── */}
       {!isMinimized && (
-        <div style={{ padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+        <div style={{ padding: '0.75rem 0.85rem', display: 'flex', flexDirection: 'column', gap: '0.65rem', maxHeight: 'calc(100vh - 140px)', overflowY: 'auto' }}>
           {/* 1. Month Selector */}
           <div>
             <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.2rem' }}>
@@ -526,6 +528,41 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
               )}
             </div>
           )}
+
+          {/* Quick Help & Examples */}
+          <div
+            style={{
+              padding: '0.45rem 0.6rem',
+              borderRadius: 'var(--radius-sm)',
+              backgroundColor: 'var(--bg-canvas)',
+              border: '1px solid var(--border-subtle)',
+              fontSize: '0.68rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.25rem',
+            }}
+          >
+            <div style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+              Command Examples:
+            </div>
+            <div
+              style={{
+                fontFamily: 'var(--font-mono, monospace)',
+                fontSize: '0.7rem',
+                color: 'var(--text-secondary)',
+                lineHeight: 1.4,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '2px',
+              }}
+            >
+              <div>P:100,105,110</div>
+              <div>A:100,105,110</div>
+              <div>P:100:105</div>
+              <div>A:100:105</div>
+              <div style={{ color: 'var(--primary-600)', fontWeight: 500 }}>P:100:105,110,115:118</div>
+            </div>
+          </div>
         </div>
       )}
     </div>

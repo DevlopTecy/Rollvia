@@ -856,3 +856,246 @@
   }
 }
 
+/* --------------------------------------------------------
+   17. Monthly Attendance Summary - Enterprise Grid Styles
+   -------------------------------------------------------- */
+.mas-modal-window {
+  --mas-bg: #ffffff;
+  --mas-header-bg: #ffffff;
+  --mas-toolbar-bg: #ffffff;
+  --mas-info-bg: #f8fafc;
+  --mas-table-bg: #ffffff;
+  --mas-row-alt-bg: #fafbfd;
+  --mas-row-hover-bg: #f1f5f9;
+  --mas-border-subtle: #e2e8f0;
+  --mas-border-default: #cbd5e1;
+  --mas-border-strong: #94a3b8;
+  --mas-month-header-bg: #f0f7ff;
+  --mas-month-header-text: #1d4ed8;
+  --mas-month-header-sub: #2563eb;
+  --mas-month-total-bg: #eff6ff;
+  --mas-month-total-text: #1d4ed8;
+  --mas-month-total-col-bg: rgba(239, 246, 255, 0.65);
+  --mas-overall-header-bg: #f0fdf4;
+  --mas-overall-header-text: #15803d;
+  --mas-roll-color: #2563eb;
+  --mas-btn-excel-bg: #f0fdf4;
+  --mas-btn-excel-border: #86efac;
+  --mas-btn-excel-text: #15803d;
+  --mas-btn-pdf-bg: #eff6ff;
+  --mas-btn-pdf-border: #93c5fd;
+  --mas-btn-pdf-text: #1d4ed8;
+  --mas-btn-print-bg: #ffffff;
+  --mas-btn-print-border: #cbd5e1;
+  --mas-btn-print-text: #334155;
+  --mas-badge-green-bg: #dcfce7;
+  --mas-badge-green-text: #15803d;
+  --mas-badge-green-border: #bbf7d0;
+  --mas-badge-orange-bg: #fef3c7;
+  --mas-badge-orange-text: #b45309;
+  --mas-badge-orange-border: #fde68a;
+  --mas-badge-red-bg: #fee2e2;
+  --mas-badge-red-text: #dc2626;
+  --mas-badge-red-border: #fecaca;
+  --mas-icon-bg: #0f172a;
+}
+
+[data-theme="dark"] .mas-modal-window {
+  --mas-bg: #1e293b;
+  --mas-header-bg: #1e293b;
+  --mas-toolbar-bg: #1e293b;
+  --mas-info-bg: #162032;
+  --mas-table-bg: #1e293b;
+  --mas-row-alt-bg: #182337;
+  --mas-row-hover-bg: #293850;
+  --mas-border-subtle: #2d3d52;
+  --mas-border-default: #3b4e68;
+  --mas-border-strong: #4f6482;
+  --mas-month-header-bg: rgba(30, 58, 138, 0.28);
+  --mas-month-header-text: #93c5fd;
+  --mas-month-header-sub: #60a5fa;
+  --mas-month-total-bg: rgba(30, 58, 138, 0.22);
+  --mas-month-total-text: #93c5fd;
+  --mas-month-total-col-bg: rgba(30, 58, 138, 0.18);
+  --mas-overall-header-bg: rgba(20, 83, 45, 0.32);
+  --mas-overall-header-text: #86efac;
+  --mas-roll-color: #60a5fa;
+  --mas-btn-excel-bg: rgba(22, 163, 74, 0.16);
+  --mas-btn-excel-border: rgba(34, 197, 94, 0.38);
+  --mas-btn-excel-text: #4ade80;
+  --mas-btn-pdf-bg: rgba(37, 99, 235, 0.16);
+  --mas-btn-pdf-border: rgba(59, 130, 246, 0.38);
+  --mas-btn-pdf-text: #60a5fa;
+  --mas-btn-print-bg: rgba(255, 255, 255, 0.05);
+  --mas-btn-print-border: #475569;
+  --mas-btn-print-text: #cbd5e1;
+  --mas-badge-green-bg: rgba(22, 101, 52, 0.35);
+  --mas-badge-green-text: #86efac;
+  --mas-badge-green-border: rgba(74, 222, 128, 0.4);
+  --mas-badge-orange-bg: rgba(180, 83, 9, 0.35);
+  --mas-badge-orange-text: #fcd34d;
+  --mas-badge-orange-border: rgba(251, 191, 36, 0.4);
+  --mas-badge-red-bg: rgba(153, 27, 27, 0.35);
+  --mas-badge-red-text: #fca5a5;
+  --mas-badge-red-border: rgba(248, 113, 113, 0.4);
+  --mas-icon-bg: #0f172a;
+}
+
+.mas-select {
+  font-size: 0.76rem;
+  font-family: inherit;
+  padding: 4px 8px;
+  border-radius: 5px;
+  border: 1px solid var(--mas-border-subtle);
+  background: var(--mas-bg);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  line-height: 1.3;
+  transition: border-color var(--transition-fast);
+}
+
+.mas-select:focus {
+  border-color: var(--primary-600);
+}
+
+.mas-filter-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.mas-btn-excel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: var(--mas-btn-excel-bg);
+  border: 1px solid var(--mas-btn-excel-border);
+  color: var(--mas-btn-excel-text);
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.mas-btn-excel:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.mas-btn-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: var(--mas-btn-pdf-bg);
+  border: 1px solid var(--mas-btn-pdf-border);
+  color: var(--mas-btn-pdf-text);
+  cursor: pointer;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+.mas-btn-pdf:hover:not(:disabled) {
+  filter: brightness(0.97);
+}
+
+.mas-btn-print {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 0.76rem;
+  font-weight: 500;
+  background: var(--mas-btn-print-bg);
+  border: 1px solid var(--mas-btn-print-border);
+  color: var(--mas-btn-print-text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.mas-btn-print:hover {
+  background: var(--mas-row-hover-bg);
+}
+
+.mas-btn-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  background: transparent;
+  border: 1px solid var(--mas-border-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-left: 2px;
+  transition: all 0.15s ease;
+}
+
+.mas-btn-close:hover {
+  background: var(--mas-row-hover-bg);
+  color: var(--text-primary);
+}
+
+.mas-divider {
+  width: 1px;
+  height: 14px;
+  background-color: var(--mas-border-subtle);
+  flex-shrink: 0;
+}
+
+.mas-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mas-dot-green {
+  background-color: #16a34a;
+}
+
+.mas-dot-orange {
+  background-color: #f59e0b;
+}
+
+.mas-dot-red {
+  background-color: #dc2626;
+}
+
+.mas-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mas-badge-green {
+  background: var(--mas-badge-green-bg);
+  color: var(--mas-badge-green-text);
+  border: 1px solid var(--mas-badge-green-border);
+}
+
+.mas-badge-orange {
+  background: var(--mas-badge-orange-bg);
+  color: var(--mas-badge-orange-text);
+  border: 1px solid var(--mas-badge-orange-border);
+}
+
+.mas-badge-red {
+  background: var(--mas-badge-red-bg);
+  color: var(--mas-badge-red-text);
+  border: 1px solid var(--mas-badge-red-border);
+}
+
+

@@ -125,6 +125,12 @@ export interface AppSessionState {
 
   // === TIMETABLE ===
   weeklyTimetable?: WeeklyTimetable;
+  /**
+   * Date-specific class schedule overrides: dateStr (YYYY-MM-DD) → array of subject names.
+   * If a date is present in dateScheduleOverrides, its classes are strictly determined by this list.
+   * If a date is not present, it defaults to weeklyTimetable.
+   */
+  dateScheduleOverrides?: Record<string, string[]>;
   classes: ClassSession[];
 
   // === ATTENDANCE RECORDS ===

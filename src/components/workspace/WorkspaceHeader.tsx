@@ -4,6 +4,8 @@ import { useFlow, useTheme } from '../../context';
 import type { WorkspaceTab } from '../../types';
 import { MONTH_NAMES, getSupportedYears, getMinSupportedYear, getMaxSupportedYear } from '../../utils/calendar';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { ExportMenu } from './ExportMenu';
+import { MonthlyAttendanceSummaryModal } from './MonthlyAttendanceSummaryModal';
 import attendlyLogo from '../../assets/attendly-logo.png';
 import attendlyLogoDark from '../../assets/attendly-icon-dark.png';
 import attendlyLogoLight from '../../assets/attendly-icon-light.png';
@@ -33,6 +35,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
   } = useFlow();
 
   const [showMonthPicker, setShowMonthPicker] = useState(false);
+  const [showMonthlySummaryModal, setShowMonthlySummaryModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Backup & Restore state
@@ -113,6 +116,7 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
         excelFileName: sessionState.excelFileName,
         people: sessionState.people,
         weeklyTimetable: sessionState.weeklyTimetable,
+        dateScheduleOverrides: sessionState.dateScheduleOverrides,
         classes: sessionState.classes,
         savedDailyAttendance: sessionState.savedDailyAttendance,
         savedDates: sessionState.savedDates,
@@ -551,6 +555,9 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
           )}
         </div>
 
+        {/* ── Centralized Export Menu ────────────────────────────────────────── */}
+        <ExportMenu onOpenMonthlySummary={() => setShowMonthlySummaryModal(true)} />
+
         {/* ── Backup & Restore Actions (Directly Near Storage Indicator) ─────────── */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
           <button
@@ -719,6 +726,12 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
           </div>
         </div>
       )}
+
+      {/* ── Monthly Attendance Summary Matrix Modal ────────────────────── */}
+      <MonthlyAttendanceSummaryModal
+        isOpen={showMonthlySummaryModal}
+        onClose={() => setShowMonthlySummaryModal(false)}
+      />
     </header>
   );
 };

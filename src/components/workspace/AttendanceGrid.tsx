@@ -12,17 +12,20 @@ import {
   CheckCircle2,
   RotateCcw,
   Edit3,
-  FileText,
+  FileSpreadsheet,
   X,
   Zap,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useFlow } from '../../context';
-import { getMonthCalendarData, getSubjectsForDate, getWeekdayForDate, MONTH_NAMES } from '../../utils/calendar';
-import type { TimetableSubject, StudentAttendanceProfile } from '../../types';
+import { getMonthCalendarData, getSubjectsForDate, getWeekdayForDate, hasDateScheduleOverride, MONTH_NAMES } from '../../utils/calendar';
+import type { TimetableSubject } from '../../types';
 import { getAttendanceColor } from '../../utils/thresholds';
-import { calculateStudentAttendanceProfile } from '../../models/attendance';
-import { downloadMonthlyAttendancePdf } from '../../utils/pdfExport';
 import { SimpleQuickPanel } from './SimpleQuickPanel';
+import { MonthlyAttendanceSummaryModal } from './MonthlyAttendanceSummaryModal';
+import { ExportMenu } from './ExportMenu';
+import { DayScheduleEditor } from './DayScheduleEditor';
+// PDF export is handled via ExportMenu using downloadMonthlyAttendancePdf
 
 const HOLIDAY_PRESETS = ['College Holiday', 'Festival', 'Exam', 'No Classes'];
 
@@ -32,13 +35,15 @@ export const AttendanceGrid: React.FC = () => {
     activeDate,
     setActiveDate,
     weeklyTimetable,
+    dateScheduleOverrides,
+    setDateScheduleOverride,
+    removeDateScheduleOverride,
     getDailyAttendance,
     isDateSaved,
     isNoClassDate,
     getHolidayReason,
     markDateAsHoliday,
     removeDateHoliday,
-    getMonthAttendanceRecords,
     saveDateToStorage,
     setWorkspaceMonth,
   } = useFlow();
@@ -66,6 +71,12 @@ export const AttendanceGrid: React.FC = () => {
   const [showSimpleQuick, setShowSimpleQuick] = useState(false);
   const focusSimpleQuickRef = useRef<(() => void) | null>(null);
 
+  // Monthly Attendance Summary Modal
+  const [showMonthlySummaryModal, setShowMonthlySummaryModal] = useState(false);
+
+  // Day Schedule Override Modal
+  const [showDayScheduleModal, setShowDayScheduleModal] = useState(false);
+
   // Holiday reason modal state
   const [showHolidayModal, setShowHolidayModal] = useState(false);
   const [holidayReasonInput, setHolidayReasonInput] = useState('College Holiday');
@@ -81,10 +92,15 @@ export const AttendanceGrid: React.FC = () => {
   const activeYear = selectedYear;
   const activeMonthIndex = selectedMonthIndex;
 
-  // Subjects for the active date from timetable
+  // Subjects for the active date from effective schedule (override or weekly timetable)
   const activeDateSubjects: TimetableSubject[] = useMemo(() => {
-    return getSubjectsForDate(activeDate, weeklyTimetable);
-  }, [activeDate, weeklyTimetable]);
+    return getSubjectsForDate(activeDate, weeklyTimetable, dateScheduleOverrides);
+  }, [activeDate, weeklyTimetable, dateScheduleOverrides]);
+
+  const hasCurrentDateOverride = useMemo(
+    () => hasDateScheduleOverride(activeDate, dateScheduleOverrides),
+    [activeDate, dateScheduleOverrides]
+  );
 
   const activeWeekday = useMemo(() => getWeekdayForDate(activeDate), [activeDate]);
 
@@ -432,8 +448,12 @@ export const AttendanceGrid: React.FC = () => {
         const updated: Record<string, Record<string, boolean>> = { ...prevDay };
 
         for (const rollNum of rollNumbers) {
-          // Find person by rollNumber
-          const person = people.find((p) => String(p.rollNumber || '').trim() === rollNum);
+          // Find person by rollNumber or ID
+          const person = people.find((p) => {
+            const roll = String(p.rollNumber || '').trim();
+            const id = String(p.id || '').trim();
+            return roll === rollNum || (!roll && id === rollNum);
+          });
           if (!person) continue;
 
           const prevPerson: Record<string, boolean> = prevDay[person.id] ?? {};
@@ -472,26 +492,6 @@ export const AttendanceGrid: React.FC = () => {
       };
     }
   }, [people, editedData, getDailyAttendance, activeDate, setActiveDate]);
-
-  // Export Monthly PDF
-  const handleExportMonthlyPdf = () => {
-    const monthRecs = getMonthAttendanceRecords(activeYear, activeMonthIndex);
-    const profilesMap = new Map<string, StudentAttendanceProfile>();
-    for (const p of people) {
-      profilesMap.set(p.id, calculateStudentAttendanceProfile(p, monthRecs));
-    }
-
-    downloadMonthlyAttendancePdf({
-      institutionName: sessionState.institutionName,
-      departmentName: sessionState.departmentName,
-      academicYear: sessionState.academicYear || String(activeYear),
-      monthStr: `${MONTH_NAMES[activeMonthIndex]} ${activeYear}`,
-      roster: people,
-      profiles: profilesMap,
-      savedDatesCount: (sessionState.savedDates || []).length,
-      holidaysCount: (sessionState.noClassDates || []).length,
-    });
-  };
 
   // Navigation helpers
   const handlePrevDay = () => {
@@ -791,10 +791,42 @@ export const AttendanceGrid: React.FC = () => {
             ) : activeDateSubjects.length > 0 ? (
               <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                 {activeDateSubjects.map((s) => s.name).join(' • ')}
+                {hasCurrentDateOverride && (
+                  <span
+                    style={{
+                      marginLeft: '0.45rem',
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      color: 'var(--primary-700, #1d4ed8)',
+                      backgroundColor: 'var(--primary-50, #eff6ff)',
+                      border: '1px solid var(--primary-200, #bfdbfe)',
+                      padding: '0.05rem 0.35rem',
+                      borderRadius: 'var(--radius-xs)',
+                    }}
+                  >
+                    Custom Schedule
+                  </span>
+                )}
               </span>
             ) : (
               <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--warning-600)' }}>
                 No subjects scheduled ({activeWeekday})
+                {hasCurrentDateOverride && (
+                  <span
+                    style={{
+                      marginLeft: '0.45rem',
+                      fontSize: '0.68rem',
+                      fontWeight: 600,
+                      color: 'var(--primary-700, #1d4ed8)',
+                      backgroundColor: 'var(--primary-50, #eff6ff)',
+                      border: '1px solid var(--primary-200, #bfdbfe)',
+                      padding: '0.05rem 0.35rem',
+                      borderRadius: 'var(--radius-xs)',
+                    }}
+                  >
+                    Custom Schedule
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -886,26 +918,52 @@ export const AttendanceGrid: React.FC = () => {
             </button>
           )}
 
-          {/* Export Monthly PDF button */}
+          {/* Contextual Action on Date: Customize Day Classes (Override) */}
           <button
             type="button"
-            onClick={handleExportMonthlyPdf}
-            title="Export official monthly attendance report as PDF"
+            onClick={() => setShowDayScheduleModal(true)}
+            title="Customize class schedule for this specific date (Weekly timetable remains unchanged)"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: '0.3rem',
-              background: 'transparent',
-              border: '1px solid var(--border-default)',
+              backgroundColor: hasCurrentDateOverride ? 'var(--primary-50, #eff6ff)' : 'transparent',
+              border: hasCurrentDateOverride ? '1px solid var(--primary-300, #93c5fd)' : '1px solid var(--border-default)',
               borderRadius: 'var(--radius-xs)',
               padding: '0.2rem 0.55rem',
               fontSize: '0.72rem',
-              color: 'var(--text-secondary)',
+              color: hasCurrentDateOverride ? 'var(--primary-700, #1d4ed8)' : 'var(--text-secondary)',
               cursor: 'pointer',
-              fontWeight: 500,
+              fontWeight: hasCurrentDateOverride ? 600 : 500,
+              marginLeft: '0.25rem',
             }}
           >
-            <FileText size={11} /> Export Monthly PDF
+            <SlidersHorizontal size={11} /> {hasCurrentDateOverride ? 'Edit Day Classes (Customized)' : 'Customize Day'}
+          </button>
+
+          {/* Centralized Export Menu */}
+          <ExportMenu onOpenMonthlySummary={() => setShowMonthlySummaryModal(true)} />
+
+          {/* Monthly Attendance Summary Matrix button */}
+          <button
+            type="button"
+            onClick={() => setShowMonthlySummaryModal(true)}
+            title="Open Month-wise Attendance Summary Matrix"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.3rem',
+              background: 'var(--primary-50, #eff6ff)',
+              border: '1px solid var(--primary-200, #bfdbfe)',
+              borderRadius: 'var(--radius-xs)',
+              padding: '0.2rem 0.55rem',
+              fontSize: '0.72rem',
+              color: 'var(--primary-700, #1d4ed8)',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            <FileSpreadsheet size={11} /> Monthly Summary
           </button>
 
           {/* Simple Quick toggle button */}
@@ -1768,12 +1826,30 @@ export const AttendanceGrid: React.FC = () => {
         onClose={() => setShowSimpleQuick(false)}
         people={people}
         weeklyTimetable={weeklyTimetable}
+        dateScheduleOverrides={dateScheduleOverrides}
         currentActiveDate={activeDate}
         onApplyQuickAttendance={handleApplyQuickAttendance}
         onRegisterFocus={(fn) => { focusSimpleQuickRef.current = fn; }}
         onMonthChange={(year, monthIndex) => {
           setWorkspaceMonth(year, monthIndex);
         }}
+      />
+
+      {/* ── Monthly Attendance Summary Matrix Modal ────────────────────── */}
+      <MonthlyAttendanceSummaryModal
+        isOpen={showMonthlySummaryModal}
+        onClose={() => setShowMonthlySummaryModal(false)}
+      />
+
+      {/* ── Day Schedule Override Editor Modal ──────────────────────────── */}
+      <DayScheduleEditor
+        isOpen={showDayScheduleModal}
+        onClose={() => setShowDayScheduleModal(false)}
+        dateStr={activeDate}
+        weeklyTimetable={weeklyTimetable}
+        dateScheduleOverrides={dateScheduleOverrides}
+        onSaveOverride={(dStr, subs) => setDateScheduleOverride(dStr, subs)}
+        onResetToDefault={(dStr) => removeDateScheduleOverride(dStr)}
       />
     </div>
   );

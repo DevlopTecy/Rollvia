@@ -18,33 +18,15 @@ import {
 } from 'lucide-react';
 import { useFlow } from '../../context';
 import { calculateStudentAttendanceProfile } from '../../models/attendance';
-import type { StudentAttendanceProfile, Person } from '../../types';
+import type { StudentAttendanceProfile } from '../../types';
 import { StudentImportModal, type ImportTabMode } from '../ui/StudentImportModal';
+import { MonthlyAttendanceSummaryModal } from './MonthlyAttendanceSummaryModal';
 import { getAttendanceColor, parsePercentage } from '../../utils/thresholds';
 
 type FilterThreshold = 'all' | 'below75' | 'below65';
 type SortField = 'index' | 'name' | 'rollNumber' | 'total' | 'present' | 'absent' | 'percentage';
 
-function exportStudentsCsv(people: Person[]) {
-  const headers = ['Name', 'Roll No', 'Phone', 'Email'];
-  const rows = people.map((p) => [
-    `"${(p.name || '').replace(/"/g, '""')}"`,
-    `"${(p.rollNumber || '').replace(/"/g, '""')}"`,
-    `"${(p.phone || '').replace(/"/g, '""')}"`,
-    `"${(p.email || '').replace(/"/g, '""')}"`,
-  ]);
-  const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  const nowStr = new Date().toISOString().split('T')[0];
-  link.setAttribute('download', `Rollvia_Students_${nowStr}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
+
 
 function exportStudentAttendanceCsv(profile: StudentAttendanceProfile, monthStr: string) {
   const p = profile.student;
@@ -106,6 +88,7 @@ export const StudentsView: React.FC = () => {
 
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importModalMode, setImportModalMode] = useState<ImportTabMode>('file');
+  const [summaryModalOpen, setSummaryModalOpen] = useState(false);
 
   const monthRecords = useMemo(
     () => getMonthAttendanceRecords(selectedYear, selectedMonthIndex),
@@ -227,43 +210,75 @@ export const StudentsView: React.FC = () => {
         overflow: 'hidden',
         minHeight: 0,
         backgroundColor: 'var(--bg-app)',
-        padding: '1.25rem',
+        padding: '1rem 1.25rem',
         display: 'flex',
         flexDirection: 'column',
-        gap: '0.85rem',
+        gap: '0.65rem',
       }}
     >
-      {/* ── Top Header ────────────────────────────────────────────────────────── */}
-      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+      {/* ── Page Header ─────────────────────────────────────────────────────── */}
+      <div
+        style={{
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '0.6rem',
+        }}
+      >
+        {/* Title + subtitle */}
         <div>
-          <h2 style={{ margin: 0, fontWeight: 700, fontSize: '1.15rem', color: 'var(--text-primary)' }}>
+          <h2
+            style={{
+              margin: 0,
+              fontWeight: 700,
+              fontSize: '1.05rem',
+              color: 'var(--text-primary)',
+              letterSpacing: '-0.01em',
+              lineHeight: 1.3,
+            }}
+          >
             Students
           </h2>
-          <p style={{ margin: '0.15rem 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          <p
+            style={{
+              margin: '0.1rem 0 0',
+              fontSize: '0.75rem',
+              color: 'var(--text-muted)',
+              fontWeight: 400,
+              lineHeight: 1.4,
+            }}
+          >
             {people.length} enrolled · {selectedMonth} statistics
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
+        {/* Action buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+          {/* Add Student — primary blue */}
           <button
             type="button"
             onClick={handleAddStudent}
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: '0.35rem',
+              gap: '0.3rem',
               backgroundColor: 'var(--primary-600)',
-              border: 'none',
+              border: '1px solid var(--primary-600)',
               borderRadius: 'var(--radius-sm)',
               color: '#fff',
-              padding: '0.38rem 0.8rem',
+              padding: '0.32rem 0.75rem',
               fontSize: '0.8rem',
               fontWeight: 600,
               cursor: 'pointer',
               transition: 'background-color 0.15s',
+              height: '30px',
+              whiteSpace: 'nowrap',
             }}
           >
-            <Plus size={14} /> Add Student
+            <Plus size={13} />
+            Add Student
           </button>
 
           {/* Import */}
@@ -279,6 +294,22 @@ export const StudentsView: React.FC = () => {
             <FileSpreadsheet size={13} /> Import
           </button>
 
+          {/* Monthly Attendance Summary */}
+          <button
+            type="button"
+            onClick={() => setSummaryModalOpen(true)}
+            title="Open Month-wise Attendance Summary Matrix"
+            style={{
+              ...actionBtnStyle,
+              backgroundColor: 'var(--primary-50)',
+              borderColor: 'var(--primary-200)',
+              color: 'var(--primary-700)',
+              fontWeight: 600,
+            }}
+          >
+            <FileSpreadsheet size={13} /> Monthly Summary
+          </button>
+
           {/* Paste List */}
           <button
             type="button"
@@ -291,36 +322,21 @@ export const StudentsView: React.FC = () => {
           >
             <ClipboardList size={13} /> Paste List
           </button>
-
-          {/* Export Roster */}
-          <button
-            type="button"
-            onClick={() => exportStudentsCsv(people)}
-            disabled={people.length === 0}
-            title="Export student roster to CSV file"
-            style={{
-              ...actionBtnStyle,
-              opacity: people.length === 0 ? 0.5 : 1,
-              cursor: people.length === 0 ? 'not-allowed' : 'pointer',
-            }}
-          >
-            <Download size={13} /> Export
-          </button>
         </div>
       </div>
 
-      {/* ── Search and Filter Bar (Directly Above Table) ───────────────────────── */}
+      {/* ── Search & Filter Bar ──────────────────────────────────────────────── */}
       <div
         style={{
           flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '0.75rem',
+          gap: '0.65rem',
           flexWrap: 'wrap',
           backgroundColor: 'var(--bg-surface)',
-          padding: '0.5rem 0.75rem',
-          borderRadius: 'var(--radius-md)',
+          padding: '0.4rem 0.7rem',
+          borderRadius: 'var(--radius-sm)',
           border: '1px solid var(--border-subtle)',
         }}
       >
@@ -329,27 +345,28 @@ export const StudentsView: React.FC = () => {
           style={{
             display: 'flex',
             alignItems: 'center',
-            gap: '0.4rem',
+            gap: '0.35rem',
             backgroundColor: 'var(--bg-canvas)',
             border: '1px solid var(--border-default)',
-            borderRadius: 'var(--radius-sm)',
-            padding: '0.25rem 0.6rem',
-            minWidth: '220px',
-            flex: '1 1 240px',
-            maxWidth: '360px',
+            borderRadius: 'var(--radius-xs)',
+            padding: '0.22rem 0.55rem',
+            minWidth: '200px',
+            flex: '1 1 220px',
+            maxWidth: '340px',
+            height: '28px',
           }}
         >
-          <Search size={14} style={{ color: 'var(--text-muted)' }} />
+          <Search size={13} style={{ color: 'var(--text-subtle)', flexShrink: 0 }} />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by name, roll no, phone, email…"
+            placeholder="Search by name, roll no, phone, email..."
             style={{
               border: 'none',
               background: 'transparent',
               outline: 'none',
-              fontSize: '0.8rem',
+              fontSize: '0.78rem',
               color: 'var(--text-primary)',
               width: '100%',
             }}
@@ -362,19 +379,28 @@ export const StudentsView: React.FC = () => {
                 border: 'none',
                 background: 'transparent',
                 cursor: 'pointer',
-                color: 'var(--text-muted)',
+                color: 'var(--text-subtle)',
                 padding: 0,
                 display: 'flex',
+                flexShrink: 0,
               }}
             >
-              <X size={13} />
+              <X size={12} />
             </button>
           )}
         </div>
 
-        {/* Filter Chips */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '0.73rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '0.25rem' }}>
+        {/* Filter chips */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
+          <span
+            style={{
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              marginRight: '0.15rem',
+              whiteSpace: 'nowrap',
+            }}
+          >
             Filter:
           </span>
 
@@ -413,33 +439,46 @@ export const StudentsView: React.FC = () => {
           overflowX: 'auto',
           backgroundColor: 'var(--bg-surface)',
           border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-md)',
-          boxShadow: 'var(--shadow-sm)',
+          borderRadius: 'var(--radius-sm)',
         }}
       >
         {people.length === 0 ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            No students yet. Click "Add Student" or "Import" to begin.
+          <div
+            style={{
+              padding: '3rem 2rem',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              fontSize: '0.82rem',
+            }}
+          >
+            No students yet. Click &ldquo;Add Student&rdquo; or &ldquo;Import&rdquo; to begin.
           </div>
         ) : filteredStudents.length === 0 ? (
-          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+          <div
+            style={{
+              padding: '3rem 2rem',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+              fontSize: '0.82rem',
+            }}
+          >
             No students matching your filter or search query.
           </div>
         ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-            <thead
-              style={{
-                position: 'sticky',
-                top: 0,
-                zIndex: 10,
-                backgroundColor: 'var(--bg-canvas)',
-              }}
-            >
-              <tr style={{ backgroundColor: 'var(--bg-canvas)' }}>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              fontSize: '0.8rem',
+              tableLayout: 'fixed',
+            }}
+          >
+            <thead>
+              <tr>
                 {/* # */}
                 <th
                   onClick={() => handleSortToggle('index')}
-                  style={{ ...thSortStyle, width: '40px', textAlign: 'center' }}
+                  style={{ ...thSortStyle, width: '44px', textAlign: 'center' }}
                   title="Sort by index"
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -453,7 +492,7 @@ export const StudentsView: React.FC = () => {
                   style={{ ...thSortStyle, textAlign: 'left' }}
                   title="Sort by name"
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                     Name {renderSortIcon('name', sortField, sortDirection)}
                   </span>
                 </th>
@@ -461,10 +500,10 @@ export const StudentsView: React.FC = () => {
                 {/* Roll No */}
                 <th
                   onClick={() => handleSortToggle('rollNumber')}
-                  style={{ ...thSortStyle, textAlign: 'left', width: '110px' }}
+                  style={{ ...thSortStyle, textAlign: 'left', width: '100px' }}
                   title="Sort by roll number"
                 >
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
                     Roll No {renderSortIcon('rollNumber', sortField, sortDirection)}
                   </span>
                 </th>
@@ -472,7 +511,7 @@ export const StudentsView: React.FC = () => {
                 {/* Classes */}
                 <th
                   onClick={() => handleSortToggle('total')}
-                  style={{ ...thSortStyle, textAlign: 'center', width: '70px' }}
+                  style={{ ...thSortStyle, textAlign: 'center', width: '80px' }}
                   title="Sort by total classes"
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -483,7 +522,7 @@ export const StudentsView: React.FC = () => {
                 {/* Present */}
                 <th
                   onClick={() => handleSortToggle('present')}
-                  style={{ ...thSortStyle, textAlign: 'center', width: '70px' }}
+                  style={{ ...thSortStyle, textAlign: 'center', width: '80px' }}
                   title="Sort by present count"
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -494,7 +533,7 @@ export const StudentsView: React.FC = () => {
                 {/* Absent */}
                 <th
                   onClick={() => handleSortToggle('absent')}
-                  style={{ ...thSortStyle, textAlign: 'center', width: '70px' }}
+                  style={{ ...thSortStyle, textAlign: 'center', width: '80px' }}
                   title="Sort by absent count"
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -505,7 +544,7 @@ export const StudentsView: React.FC = () => {
                 {/* % */}
                 <th
                   onClick={() => handleSortToggle('percentage')}
-                  style={{ ...thSortStyle, textAlign: 'center', width: '80px' }}
+                  style={{ ...thSortStyle, textAlign: 'center', width: '76px' }}
                   title="Sort by attendance percentage"
                 >
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
@@ -514,7 +553,7 @@ export const StudentsView: React.FC = () => {
                 </th>
 
                 {/* Actions */}
-                <th style={{ ...thStaticStyle, width: '70px', textAlign: 'right' }}>
+                <th style={{ ...thStaticStyle, width: '72px', textAlign: 'right' }}>
                   Actions
                 </th>
               </tr>
@@ -529,12 +568,25 @@ export const StudentsView: React.FC = () => {
                   <React.Fragment key={person.id}>
                     <tr
                       style={{
-                        backgroundColor: idx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-subtle)',
+                        backgroundColor: isExpanded
+                          ? 'var(--primary-50)'
+                          : idx % 2 === 0
+                          ? 'var(--bg-surface)'
+                          : 'var(--bg-surface-subtle)',
                         borderBottom: isExpanded ? 'none' : '1px solid var(--border-subtle)',
+                        transition: 'background-color 0.1s',
                       }}
                     >
                       {/* # */}
-                      <td style={{ ...tdSt, textAlign: 'center', color: 'var(--text-subtle)', width: '40px' }}>
+                      <td
+                        style={{
+                          ...tdSt,
+                          textAlign: 'center',
+                          color: 'var(--text-subtle)',
+                          fontSize: '0.72rem',
+                          width: '44px',
+                        }}
+                      >
                         {idx + 1}
                       </td>
 
@@ -558,29 +610,35 @@ export const StudentsView: React.FC = () => {
                               cursor: 'pointer',
                               textAlign: 'left',
                               fontWeight: 600,
-                              color: 'var(--primary-700)',
-                              fontSize: '0.83rem',
+                              color: 'var(--text-primary)',
+                              fontSize: '0.8rem',
                               display: 'flex',
                               alignItems: 'center',
-                              gap: '0.35rem',
+                              gap: '0.3rem',
                               padding: 0,
+                              width: '100%',
                             }}
                           >
                             <ChevronRight
-                              size={13}
+                              size={12}
                               style={{
                                 transform: isExpanded ? 'rotate(90deg)' : 'none',
                                 transition: 'transform 0.15s',
-                                color: 'var(--text-muted)',
+                                color: 'var(--text-subtle)',
+                                flexShrink: 0,
                               }}
                             />
-                            {person.name || <span style={{ color: 'var(--danger-500)', fontStyle: 'italic' }}>Unnamed</span>}
+                            <span style={{ color: isExpanded ? 'var(--primary-700)' : 'var(--text-primary)' }}>
+                              {person.name || (
+                                <span style={{ color: 'var(--danger-500)', fontStyle: 'italic' }}>Unnamed</span>
+                              )}
+                            </span>
                           </button>
                         )}
                       </td>
 
                       {/* Roll No */}
-                      <td style={tdSt}>
+                      <td style={{ ...tdSt, width: '100px' }}>
                         {isEditing ? (
                           <input
                             type="text"
@@ -589,32 +647,105 @@ export const StudentsView: React.FC = () => {
                             style={inpSt}
                           />
                         ) : (
-                          <span style={{ fontWeight: 500, color: 'var(--primary-600)' }}>{person.rollNumber || '—'}</span>
+                          <span
+                            style={{
+                              fontWeight: 500,
+                              color: 'var(--primary-600)',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {person.rollNumber || '—'}
+                          </span>
                         )}
                       </td>
 
-                      {/* Stats */}
-                      <td style={{ ...tdSt, textAlign: 'center', color: 'var(--text-muted)' }}>{profile.totalClasses}</td>
-                      <td style={{ ...tdSt, textAlign: 'center', color: 'var(--success-600)', fontWeight: 600 }}>{profile.presentClasses}</td>
-                      <td style={{ ...tdSt, textAlign: 'center', color: 'var(--danger-600)', fontWeight: 600 }}>{profile.absentClasses}</td>
-                      <td style={{ ...tdSt, textAlign: 'center', fontWeight: 700, color: attendanceColor.color }}>
+                      {/* Classes */}
+                      <td
+                        style={{
+                          ...tdSt,
+                          textAlign: 'center',
+                          color: 'var(--text-secondary)',
+                          fontVariantNumeric: 'tabular-nums',
+                          width: '80px',
+                        }}
+                      >
+                        {profile.totalClasses}
+                      </td>
+
+                      {/* Present */}
+                      <td
+                        style={{
+                          ...tdSt,
+                          textAlign: 'center',
+                          color: 'var(--success-600)',
+                          fontWeight: 600,
+                          fontVariantNumeric: 'tabular-nums',
+                          width: '80px',
+                        }}
+                      >
+                        {profile.presentClasses}
+                      </td>
+
+                      {/* Absent */}
+                      <td
+                        style={{
+                          ...tdSt,
+                          textAlign: 'center',
+                          color: profile.absentClasses > 0 ? 'var(--danger-600)' : 'var(--text-subtle)',
+                          fontWeight: profile.absentClasses > 0 ? 600 : 400,
+                          fontVariantNumeric: 'tabular-nums',
+                          width: '80px',
+                        }}
+                      >
+                        {profile.absentClasses}
+                      </td>
+
+                      {/* % */}
+                      <td
+                        style={{
+                          ...tdSt,
+                          textAlign: 'center',
+                          fontWeight: 700,
+                          color: attendanceColor.color,
+                          fontVariantNumeric: 'tabular-nums',
+                          width: '76px',
+                        }}
+                      >
                         {profile.overallPercentage}
                       </td>
 
                       {/* Actions */}
-                      <td style={{ ...tdSt, textAlign: 'right' }}>
+                      <td style={{ ...tdSt, textAlign: 'right', width: '72px' }}>
                         {isEditing ? (
-                          <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'flex-end' }}>
-                            <button type="button" onClick={() => handleSaveEdit(idx)} style={iconBtnSt('success')} title="Save">
-                              <Check size={13} />
+                          <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(idx)}
+                              style={iconBtnSt('success')}
+                              title="Save"
+                            >
+                              <Check size={12} />
                             </button>
-                            <button type="button" onClick={() => { setEditingIdx(null); setEditError(''); }} style={iconBtnSt('neutral')} title="Cancel">
-                              <X size={13} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingIdx(null);
+                                setEditError('');
+                              }}
+                              style={iconBtnSt('neutral')}
+                              title="Cancel"
+                            >
+                              <X size={12} />
                             </button>
                           </div>
                         ) : (
-                          <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'flex-end' }}>
-                            <button type="button" onClick={() => handleStartEdit(idx)} style={iconBtnSt('neutral')} title="Edit Student">
+                          <div style={{ display: 'flex', gap: '0.25rem', justifyContent: 'flex-end' }}>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(idx)}
+                              style={iconBtnSt('neutral')}
+                              title="Edit Student"
+                            >
                               <Edit2 size={12} />
                             </button>
                             <button
@@ -633,7 +764,15 @@ export const StudentsView: React.FC = () => {
                     {/* Inline edit error */}
                     {isEditing && editError && (
                       <tr style={{ backgroundColor: 'var(--danger-50)' }}>
-                        <td colSpan={8} style={{ padding: '0.3rem 0.75rem', fontSize: '0.75rem', color: 'var(--danger-600)' }}>
+                        <td
+                          colSpan={8}
+                          style={{
+                            padding: '0.25rem 0.75rem',
+                            fontSize: '0.73rem',
+                            color: 'var(--danger-600)',
+                            borderBottom: '1px solid var(--danger-100)',
+                          }}
+                        >
                           {editError}
                         </td>
                       </tr>
@@ -641,24 +780,40 @@ export const StudentsView: React.FC = () => {
 
                     {/* Delete confirmation inline */}
                     {confirmDeleteIdx === idx && (
-                      <tr style={{ backgroundColor: 'var(--danger-50)', borderBottom: '1px solid var(--border-subtle)' }}>
-                        <td colSpan={8} style={{ padding: '0.5rem 0.75rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem' }}>
-                            <span style={{ color: 'var(--danger-600)', fontWeight: 600 }}>
+                      <tr
+                        style={{
+                          backgroundColor: 'var(--danger-50)',
+                          borderBottom: '1px solid var(--border-subtle)',
+                        }}
+                      >
+                        <td colSpan={8} style={{ padding: '0.45rem 0.75rem' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.65rem',
+                              fontSize: '0.78rem',
+                            }}
+                          >
+                            <span style={{ color: 'var(--danger-700)', fontWeight: 600 }}>
                               Delete {person.name}? This will remove the student from the roster.
                             </span>
                             <button
                               type="button"
-                              onClick={() => { deletePerson(idx); setConfirmDeleteIdx(null); }}
+                              onClick={() => {
+                                deletePerson(idx);
+                                setConfirmDeleteIdx(null);
+                              }}
                               style={{
-                                backgroundColor: 'var(--danger-500)',
+                                backgroundColor: 'var(--danger-600)',
                                 border: 'none',
                                 borderRadius: 'var(--radius-xs)',
                                 color: '#fff',
                                 padding: '0.2rem 0.6rem',
                                 fontWeight: 700,
-                                fontSize: '0.75rem',
+                                fontSize: '0.73rem',
                                 cursor: 'pointer',
+                                whiteSpace: 'nowrap',
                               }}
                             >
                               Delete
@@ -672,8 +827,9 @@ export const StudentsView: React.FC = () => {
                                 borderRadius: 'var(--radius-xs)',
                                 color: 'var(--text-secondary)',
                                 padding: '0.2rem 0.6rem',
-                                fontSize: '0.75rem',
+                                fontSize: '0.73rem',
                                 cursor: 'pointer',
+                                whiteSpace: 'nowrap',
                               }}
                             >
                               Cancel
@@ -683,29 +839,44 @@ export const StudentsView: React.FC = () => {
                       </tr>
                     )}
 
-                    {/* ── Student Attendance Card (Expanded View) ────────────────── */}
+                    {/* ── Student Detail Expanded Card ──────────────────────── */}
                     {isExpanded && !isEditing && (
                       <tr>
-                        <td colSpan={8} style={{ padding: '0.75rem 1rem 1rem 1.5rem', backgroundColor: 'var(--bg-canvas)', borderBottom: '1px solid var(--border-subtle)' }}>
+                        <td
+                          colSpan={8}
+                          style={{
+                            padding: '0.65rem 1rem 0.85rem 2rem',
+                            backgroundColor: 'var(--bg-canvas)',
+                            borderBottom: '1px solid var(--border-default)',
+                          }}
+                        >
                           <div
                             style={{
                               backgroundColor: 'var(--bg-surface)',
                               border: '1px solid var(--border-subtle)',
                               borderRadius: 'var(--radius-sm)',
-                              padding: '1rem',
-                              boxShadow: 'var(--shadow-xs)',
+                              padding: '0.85rem 1rem',
                               display: 'flex',
                               flexDirection: 'column',
-                              gap: '0.85rem',
+                              gap: '0.75rem',
                             }}
                           >
-                            {/* Card Top: Details + Actions */}
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '0.75rem' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                            {/* Card top: student info + card actions */}
+                            <div
+                              style={{
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'flex-start',
+                                flexWrap: 'wrap',
+                                gap: '0.65rem',
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                                {/* Avatar initial */}
                                 <div
                                   style={{
-                                    width: '38px',
-                                    height: '38px',
+                                    width: '34px',
+                                    height: '34px',
                                     borderRadius: '50%',
                                     backgroundColor: 'var(--primary-100)',
                                     color: 'var(--primary-700)',
@@ -713,40 +884,68 @@ export const StudentsView: React.FC = () => {
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     fontWeight: 700,
-                                    fontSize: '0.95rem',
+                                    fontSize: '0.88rem',
+                                    flexShrink: 0,
                                   }}
                                 >
                                   {(person.name || '?')[0].toUpperCase()}
                                 </div>
                                 <div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                    <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                    <span
+                                      style={{
+                                        fontWeight: 700,
+                                        fontSize: '0.9rem',
+                                        color: 'var(--text-primary)',
+                                      }}
+                                    >
                                       {person.name}
                                     </span>
-                                    <span style={{ fontSize: '0.78rem', color: 'var(--primary-600)', fontWeight: 600 }}>
+                                    <span
+                                      style={{
+                                        fontSize: '0.73rem',
+                                        color: 'var(--primary-600)',
+                                        fontWeight: 600,
+                                        backgroundColor: 'var(--primary-50)',
+                                        border: '1px solid var(--primary-200)',
+                                        borderRadius: 'var(--radius-xs)',
+                                        padding: '0.1rem 0.4rem',
+                                      }}
+                                    >
                                       Roll No: {person.rollNumber || 'N/A'}
                                     </span>
                                   </div>
-                                  <div style={{ display: 'flex', gap: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                                  <div
+                                    style={{
+                                      display: 'flex',
+                                      gap: '0.85rem',
+                                      fontSize: '0.73rem',
+                                      color: 'var(--text-muted)',
+                                      marginTop: '0.2rem',
+                                      flexWrap: 'wrap',
+                                    }}
+                                  >
                                     {person.phone && (
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                        <Phone size={11} /> {person.phone}
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                                        <Phone size={10} /> {person.phone}
                                       </span>
                                     )}
                                     {person.email && (
-                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
-                                        <Mail size={11} /> {person.email}
+                                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                                        <Mail size={10} /> {person.email}
                                       </span>
                                     )}
                                     {!person.phone && !person.email && (
-                                      <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>No phone or email listed</span>
+                                      <span style={{ color: 'var(--text-subtle)', fontStyle: 'italic' }}>
+                                        No phone or email listed
+                                      </span>
                                     )}
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Card Actions: Edit Student, Export Attendance */}
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                              {/* Card actions */}
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                                 <button
                                   type="button"
                                   onClick={() => handleStartEdit(idx)}
@@ -764,67 +963,128 @@ export const StudentsView: React.FC = () => {
                               </div>
                             </div>
 
-                            {/* Card Metrics Summary Strip */}
+                            {/* Metrics strip */}
                             <div
                               style={{
                                 display: 'grid',
-                                gridTemplateColumns: 'repeat(4, 1fr)',
-                                gap: '0.5rem',
+                                gridTemplateColumns: 'repeat(4, auto)',
+                                gap: '0',
                                 backgroundColor: 'var(--bg-canvas)',
                                 borderRadius: 'var(--radius-xs)',
-                                padding: '0.5rem 0.75rem',
+                                border: '1px solid var(--border-subtle)',
+                                overflow: 'hidden',
                               }}
                             >
-                              <div>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Total Classes</span>
-                                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)' }}>{profile.totalClasses}</span>
-                              </div>
-                              <div>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Present</span>
-                                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--success-600)' }}>{profile.presentClasses}</span>
-                              </div>
-                              <div>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Absent</span>
-                                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--danger-600)' }}>{profile.absentClasses}</span>
-                              </div>
-                              <div>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>Attendance %</span>
-                                <span style={{ fontWeight: 700, fontSize: '0.92rem', color: attendanceColor.color }}>
-                                  {profile.overallPercentage}
-                                </span>
-                              </div>
+                              {[
+                                {
+                                  label: 'Total Classes',
+                                  value: profile.totalClasses,
+                                  color: 'var(--text-primary)',
+                                },
+                                {
+                                  label: 'Present',
+                                  value: profile.presentClasses,
+                                  color: 'var(--success-600)',
+                                },
+                                {
+                                  label: 'Absent',
+                                  value: profile.absentClasses,
+                                  color: 'var(--danger-600)',
+                                },
+                                {
+                                  label: 'Attendance %',
+                                  value: profile.overallPercentage,
+                                  color: attendanceColor.color,
+                                },
+                              ].map((metric, i) => (
+                                <div
+                                  key={metric.label}
+                                  style={{
+                                    padding: '0.45rem 0.75rem',
+                                    borderRight: i < 3 ? '1px solid var(--border-subtle)' : 'none',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '0.1rem',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      fontSize: '0.67rem',
+                                      color: 'var(--text-muted)',
+                                      fontWeight: 500,
+                                      textTransform: 'uppercase',
+                                      letterSpacing: '0.04em',
+                                    }}
+                                  >
+                                    {metric.label}
+                                  </span>
+                                  <span
+                                    style={{
+                                      fontWeight: 700,
+                                      fontSize: '0.95rem',
+                                      color: metric.color,
+                                      lineHeight: 1.2,
+                                    }}
+                                  >
+                                    {metric.value}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
 
-                            {/* Subject-wise breakdown table */}
+                            {/* Subject-wise breakdown */}
                             <div>
                               <div
                                 style={{
-                                  fontSize: '0.73rem',
+                                  fontSize: '0.68rem',
                                   fontWeight: 700,
-                                  color: 'var(--text-secondary)',
+                                  color: 'var(--text-muted)',
                                   textTransform: 'uppercase',
-                                  letterSpacing: '0.03em',
-                                  marginBottom: '0.35rem',
+                                  letterSpacing: '0.05em',
+                                  marginBottom: '0.3rem',
                                 }}
                               >
                                 Subject-Wise Attendance Breakdown ({selectedMonth})
                               </div>
                               {profile.subjectStats.length === 0 ? (
-                                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                <div
+                                  style={{
+                                    fontSize: '0.75rem',
+                                    color: 'var(--text-muted)',
+                                    fontStyle: 'italic',
+                                  }}
+                                >
                                   No recorded attendance classes for this student yet this month.
                                 </div>
                               ) : (
-                                <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse' }}>
+                                <table
+                                  style={{
+                                    width: '100%',
+                                    fontSize: '0.75rem',
+                                    borderCollapse: 'collapse',
+                                    border: '1px solid var(--border-subtle)',
+                                    borderRadius: 'var(--radius-xs)',
+                                    overflow: 'hidden',
+                                  }}
+                                >
                                   <thead>
-                                    <tr style={{ borderBottom: '1px solid var(--border-default)', color: 'var(--text-muted)' }}>
+                                    <tr
+                                      style={{
+                                        backgroundColor: 'var(--bg-canvas)',
+                                        borderBottom: '1px solid var(--border-default)',
+                                      }}
+                                    >
                                       {['Subject', 'Present', 'Absent', 'Total', 'Percentage'].map((h, i) => (
                                         <th
                                           key={h}
                                           style={{
-                                            padding: '0.3rem 0.5rem',
+                                            padding: '0.28rem 0.55rem',
                                             textAlign: i === 0 ? 'left' : 'center',
                                             fontWeight: 600,
-                                            fontSize: '0.72rem',
+                                            fontSize: '0.68rem',
+                                            color: 'var(--text-secondary)',
+                                            textTransform: 'uppercase',
+                                            letterSpacing: '0.03em',
                                           }}
                                         >
                                           {h}
@@ -833,23 +1093,63 @@ export const StudentsView: React.FC = () => {
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {profile.subjectStats.map((st) => {
+                                    {profile.subjectStats.map((st, stIdx) => {
                                       const stColor = getAttendanceColor(st.percentage);
                                       return (
-                                        <tr key={st.subject} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                                          <td style={{ padding: '0.35rem 0.5rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                        <tr
+                                          key={st.subject}
+                                          style={{
+                                            borderBottom: '1px solid var(--border-subtle)',
+                                            backgroundColor:
+                                              stIdx % 2 === 0 ? 'var(--bg-surface)' : 'var(--bg-surface-subtle)',
+                                          }}
+                                        >
+                                          <td
+                                            style={{
+                                              padding: '0.3rem 0.55rem',
+                                              fontWeight: 600,
+                                              color: 'var(--text-primary)',
+                                            }}
+                                          >
                                             {st.subject}
                                           </td>
-                                          <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', color: 'var(--success-600)', fontWeight: 600 }}>
+                                          <td
+                                            style={{
+                                              padding: '0.3rem 0.55rem',
+                                              textAlign: 'center',
+                                              color: 'var(--success-600)',
+                                              fontWeight: 600,
+                                            }}
+                                          >
                                             {st.present}
                                           </td>
-                                          <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', color: 'var(--danger-600)', fontWeight: 600 }}>
+                                          <td
+                                            style={{
+                                              padding: '0.3rem 0.55rem',
+                                              textAlign: 'center',
+                                              color: st.absent > 0 ? 'var(--danger-600)' : 'var(--text-subtle)',
+                                              fontWeight: st.absent > 0 ? 600 : 400,
+                                            }}
+                                          >
                                             {st.absent}
                                           </td>
-                                          <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+                                          <td
+                                            style={{
+                                              padding: '0.3rem 0.55rem',
+                                              textAlign: 'center',
+                                              color: 'var(--text-secondary)',
+                                            }}
+                                          >
                                             {st.total}
                                           </td>
-                                          <td style={{ padding: '0.35rem 0.5rem', textAlign: 'center', fontWeight: 700, color: stColor.color }}>
+                                          <td
+                                            style={{
+                                              padding: '0.3rem 0.55rem',
+                                              textAlign: 'center',
+                                              fontWeight: 700,
+                                              color: stColor.color,
+                                            }}
+                                          >
                                             {st.percentage}
                                           </td>
                                         </tr>
@@ -878,53 +1178,60 @@ export const StudentsView: React.FC = () => {
         onClose={() => setImportModalOpen(false)}
         onImport={importStudents}
       />
+
+      <MonthlyAttendanceSummaryModal
+        isOpen={summaryModalOpen}
+        onClose={() => setSummaryModalOpen(false)}
+      />
     </div>
   );
 };
 
-// ─── Style Helpers ──────────────────────────────────────────────────────────
+// ─── Style Helpers ───────────────────────────────────────────────────────────
 
 const tdSt: React.CSSProperties = {
-  padding: '0.5rem 0.75rem',
+  padding: '0.42rem 0.65rem',
   color: 'var(--text-primary)',
   verticalAlign: 'middle',
 };
 
 const thSortStyle: React.CSSProperties = {
-  padding: '0.55rem 0.65rem',
-  fontWeight: 700,
-  fontSize: '0.72rem',
+  padding: '0.45rem 0.65rem',
+  fontWeight: 600,
+  fontSize: '0.68rem',
   textTransform: 'uppercase',
-  letterSpacing: '0.03em',
+  letterSpacing: '0.05em',
   color: 'var(--text-secondary)',
   backgroundColor: 'var(--bg-canvas)',
-  borderBottom: '2px solid var(--border-default)',
+  borderBottom: '1px solid var(--border-default)',
   cursor: 'pointer',
   userSelect: 'none',
   position: 'sticky',
   top: 0,
   zIndex: 10,
+  whiteSpace: 'nowrap',
 };
 
 const thStaticStyle: React.CSSProperties = {
-  padding: '0.55rem 0.65rem',
-  fontWeight: 700,
-  fontSize: '0.72rem',
+  padding: '0.45rem 0.65rem',
+  fontWeight: 600,
+  fontSize: '0.68rem',
   textTransform: 'uppercase',
-  letterSpacing: '0.03em',
+  letterSpacing: '0.05em',
   color: 'var(--text-secondary)',
   backgroundColor: 'var(--bg-canvas)',
-  borderBottom: '2px solid var(--border-default)',
+  borderBottom: '1px solid var(--border-default)',
   position: 'sticky',
   top: 0,
   zIndex: 10,
+  whiteSpace: 'nowrap',
 };
 
 const inpSt: React.CSSProperties = {
   border: '1.5px solid var(--primary-500)',
   borderRadius: 'var(--radius-xs)',
-  padding: '0.25rem 0.5rem',
-  fontSize: '0.83rem',
+  padding: '0.22rem 0.45rem',
+  fontSize: '0.8rem',
   color: 'var(--text-primary)',
   backgroundColor: 'var(--bg-canvas)',
   outline: 'none',
@@ -934,16 +1241,18 @@ const inpSt: React.CSSProperties = {
 const actionBtnStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
-  gap: '0.35rem',
+  gap: '0.3rem',
   backgroundColor: 'var(--bg-surface)',
   border: '1px solid var(--border-default)',
   borderRadius: 'var(--radius-sm)',
-  color: 'var(--text-primary)',
-  padding: '0.38rem 0.75rem',
+  color: 'var(--text-secondary)',
+  padding: '0.32rem 0.7rem',
   fontSize: '0.8rem',
-  fontWeight: 600,
+  fontWeight: 500,
   cursor: 'pointer',
   transition: 'all 0.15s',
+  height: '30px',
+  whiteSpace: 'nowrap',
 };
 
 const cardActionBtnStyle: React.CSSProperties = {
@@ -954,85 +1263,102 @@ const cardActionBtnStyle: React.CSSProperties = {
   border: '1px solid var(--border-default)',
   borderRadius: 'var(--radius-xs)',
   color: 'var(--text-secondary)',
-  padding: '0.25rem 0.6rem',
-  fontSize: '0.75rem',
+  padding: '0.22rem 0.55rem',
+  fontSize: '0.73rem',
   fontWeight: 500,
   cursor: 'pointer',
   transition: 'all 0.1s',
+  whiteSpace: 'nowrap',
 };
 
 function filterChipStyle(active: boolean, variant: 'neutral' | 'warning' | 'danger'): React.CSSProperties {
+  const base: React.CSSProperties = {
+    borderRadius: 'var(--radius-xs)',
+    padding: '0.2rem 0.5rem',
+    fontSize: '0.73rem',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    transition: 'all 0.1s',
+    lineHeight: 1.3,
+  };
+
   if (active) {
     if (variant === 'warning') {
       return {
+        ...base,
         backgroundColor: 'var(--warning-50)',
         border: '1px solid var(--warning-500)',
-        color: 'var(--warning-700)',
-        borderRadius: 'var(--radius-sm)',
-        padding: '0.22rem 0.55rem',
-        fontSize: '0.75rem',
-        fontWeight: 700,
-        cursor: 'pointer',
+        color: 'var(--warning-600)',
+        fontWeight: 600,
       };
     }
     if (variant === 'danger') {
       return {
+        ...base,
         backgroundColor: 'var(--danger-50)',
         border: '1px solid var(--danger-500)',
-        color: 'var(--danger-700)',
-        borderRadius: 'var(--radius-sm)',
-        padding: '0.22rem 0.55rem',
-        fontSize: '0.75rem',
-        fontWeight: 700,
-        cursor: 'pointer',
+        color: 'var(--danger-600)',
+        fontWeight: 600,
       };
     }
     return {
+      ...base,
       backgroundColor: 'var(--primary-600)',
       border: '1px solid var(--primary-600)',
       color: '#fff',
-      borderRadius: 'var(--radius-sm)',
-      padding: '0.22rem 0.55rem',
-      fontSize: '0.75rem',
-      fontWeight: 700,
-      cursor: 'pointer',
+      fontWeight: 600,
     };
   }
 
   return {
-    backgroundColor: 'var(--bg-canvas)',
+    ...base,
+    backgroundColor: 'transparent',
     border: '1px solid var(--border-default)',
     color: 'var(--text-secondary)',
-    borderRadius: 'var(--radius-sm)',
-    padding: '0.22rem 0.55rem',
-    fontSize: '0.75rem',
-    fontWeight: 500,
-    cursor: 'pointer',
+    fontWeight: 400,
   };
 }
 
 function renderSortIcon(field: SortField, currentField: SortField, direction: 'asc' | 'desc') {
   if (field !== currentField) {
-    return <ArrowUpDown size={11} style={{ opacity: 0.4 }} />;
+    return <ArrowUpDown size={10} style={{ opacity: 0.35 }} />;
   }
-  return direction === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />;
+  return direction === 'asc' ? (
+    <ArrowUp size={10} style={{ color: 'var(--primary-600)' }} />
+  ) : (
+    <ArrowDown size={10} style={{ color: 'var(--primary-600)' }} />
+  );
 }
 
 function iconBtnSt(variant: 'success' | 'neutral' | 'danger'): React.CSSProperties {
   const colors = {
-    success: { bg: 'var(--success-50)', border: 'var(--success-500)', color: 'var(--success-600)' },
-    neutral: { bg: 'var(--bg-canvas)', border: 'var(--border-default)', color: 'var(--text-secondary)' },
-    danger: { bg: 'var(--danger-50)', border: 'var(--danger-500)', color: 'var(--danger-600)' },
+    success: {
+      bg: 'var(--success-50)',
+      border: 'var(--success-500)',
+      color: 'var(--success-600)',
+    },
+    neutral: {
+      bg: 'var(--bg-canvas)',
+      border: 'var(--border-default)',
+      color: 'var(--text-secondary)',
+    },
+    danger: {
+      bg: 'var(--danger-50)',
+      border: 'var(--danger-200)',
+      color: 'var(--danger-600)',
+    },
   }[variant];
+
   return {
     backgroundColor: colors.bg,
     border: `1px solid ${colors.border}`,
     borderRadius: 'var(--radius-xs)',
     color: colors.color,
-    padding: '0.2rem 0.3rem',
+    padding: '0.2rem 0.28rem',
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
     justifyContent: 'center',
+    transition: 'all 0.1s',
   };
 }

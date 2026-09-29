@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { StepId, StepMeta, AppSessionState, StorageMode, Person, ClassSession, Weekday, WeeklyTimetable, WorkspaceTab } from '../types';
+import type { StepId, StepMeta, AppSessionState, StorageMode, Person, ClassSession, Weekday, WeeklyTimetable, TimetableSubject, WorkspaceTab } from '../types';
 import type { AttendanceDataset, AttendanceRecord } from '../models/attendance';
 import type { StorageSaveResult } from '../storage';
 
@@ -72,6 +72,13 @@ export interface FlowContextType {
   addTimetableSubject: (day: Weekday, name: string) => { success: boolean; error?: string };
   updateTimetableSubject: (day: Weekday, id: string, name: string) => { success: boolean; error?: string };
   deleteTimetableSubject: (day: Weekday, id: string) => void;
+
+  // === DATE SCHEDULE OVERRIDES ===
+  dateScheduleOverrides: Record<string, string[]>;
+  setDateScheduleOverride: (dateStr: string, subjects: string[]) => void;
+  removeDateScheduleOverride: (dateStr: string) => void;
+  getDateScheduleOverride: (dateStr: string) => string[] | undefined;
+  getEffectiveSubjectsForDate: (dateStr: string) => TimetableSubject[];
 
   // === LEGACY CLASS METHODS ===
   addClass: (name: string) => void;

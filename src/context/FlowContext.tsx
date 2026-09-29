@@ -8,6 +8,7 @@ import type {
   ClassSession,
   Weekday,
   WeeklyTimetable,
+  TimetableSubject,
   WorkspaceTab,
   DailyAttendanceMap,
 } from '../types';
@@ -91,8 +92,30 @@ const savePersistedHolidayReasons = (reasons: Record<string, string>) => {
   }
 };
 
+const loadPersistedDateScheduleOverrides = (): Record<string, string[]> => {
+  if (typeof window === 'undefined' || !window.localStorage) return {};
+  try {
+    const raw = localStorage.getItem('attendly_date_schedule_overrides');
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const savePersistedDateScheduleOverrides = (overrides: Record<string, string[]>) => {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    localStorage.setItem('attendly_date_schedule_overrides', JSON.stringify(overrides));
+  } catch {
+    // ignore
+  }
+};
+
 const initialPersistedNoClassDates = loadPersistedNoClassDates();
 const initialPersistedHolidayReasons = loadPersistedHolidayReasons();
+const initialPersistedDateScheduleOverrides = loadPersistedDateScheduleOverrides();
 
 const INITIAL_STATE: AppSessionState = {
   appPhase: 'setup',
@@ -114,6 +137,7 @@ const INITIAL_STATE: AppSessionState = {
   workingDaysCount: 22,
   minimumAttendanceThreshold: 75,
   weeklyTimetable: INITIAL_WEEKLY_TIMETABLE,
+  dateScheduleOverrides: initialPersistedDateScheduleOverrides,
   classes: [],
   savedDailyAttendance: {},
   savedDates: [],
@@ -636,6 +660,56 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
+  // ─── Date Schedule Overrides ──────────────────────────────────────────────────
+
+  const setDateScheduleOverride = (dateStr: string, subjects: string[]) => {
+    setSessionState((prev) => {
+      const updatedOverrides = {
+        ...(prev.dateScheduleOverrides || {}),
+        [dateStr]: [...subjects],
+      };
+      savePersistedDateScheduleOverrides(updatedOverrides);
+
+      const isCurrent = (prev.activeDate || prev.startDate) === dateStr;
+      const newClasses = isCurrent
+        ? getScheduledClassesForDate(dateStr, prev.weeklyTimetable, prev.classes || [], updatedOverrides)
+        : prev.classes;
+
+      return {
+        ...prev,
+        dateScheduleOverrides: updatedOverrides,
+        classes: newClasses,
+      };
+    });
+  };
+
+  const removeDateScheduleOverride = (dateStr: string) => {
+    setSessionState((prev) => {
+      const updatedOverrides = { ...(prev.dateScheduleOverrides || {}) };
+      delete updatedOverrides[dateStr];
+      savePersistedDateScheduleOverrides(updatedOverrides);
+
+      const isCurrent = (prev.activeDate || prev.startDate) === dateStr;
+      const newClasses = isCurrent
+        ? getScheduledClassesForDate(dateStr, prev.weeklyTimetable, prev.classes || [], updatedOverrides)
+        : prev.classes;
+
+      return {
+        ...prev,
+        dateScheduleOverrides: updatedOverrides,
+        classes: newClasses,
+      };
+    });
+  };
+
+  const getDateScheduleOverride = (dateStr: string): string[] | undefined => {
+    return sessionState.dateScheduleOverrides?.[dateStr];
+  };
+
+  const getEffectiveSubjectsForDate = (dateStr: string): TimetableSubject[] => {
+    return getSubjectsForDate(dateStr, sessionState.weeklyTimetable, sessionState.dateScheduleOverrides);
+  };
+
   // ─── Legacy class methods ─────────────────────────────────────────────────────
 
   const addClass = (name: string) => {
@@ -679,9 +753,15 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ─── Helper: resolve subjects for a date as ClassSession[] ───────────────────
 
   const getScheduledClassesForDate = useCallback(
-    (dateStr: string, timetable?: WeeklyTimetable, fallbackClasses: ClassSession[] = []): ClassSession[] => {
+    (
+      dateStr: string,
+      timetable?: WeeklyTimetable,
+      fallbackClasses: ClassSession[] = [],
+      overrides?: Record<string, string[]>
+    ): ClassSession[] => {
       const tb = timetable || INITIAL_WEEKLY_TIMETABLE;
-      const scheduled = getSubjectsForDate(dateStr, tb);
+      const effectiveOverrides = overrides !== undefined ? overrides : sessionState.dateScheduleOverrides;
+      const scheduled = getSubjectsForDate(dateStr, tb, effectiveOverrides);
       if (scheduled.length > 0) {
         const weekday = getWeekdayForDate(dateStr);
         return scheduled.map((sub) => ({
@@ -697,7 +777,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return fallbackClasses;
     },
-    [sessionState.people.length]
+    [sessionState.people.length, sessionState.dateScheduleOverrides]
   );
 
   // ─── Workspace: Multi-date attendance ────────────────────────────────────────
@@ -710,7 +790,12 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       // Build flat AttendanceRecord[] from this date's data
-      const activeClasses = getScheduledClassesForDate(dateStr, prev.weeklyTimetable, prev.classes || []);
+      const activeClasses = getScheduledClassesForDate(
+        dateStr,
+        prev.weeklyTimetable,
+        prev.classes || [],
+        prev.dateScheduleOverrides
+      );
       const newRecords = buildAttendanceRecords({
         date: dateStr,
         people: prev.people,
@@ -852,6 +937,10 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           data.holidayReasons && typeof data.holidayReasons === 'object' && !Array.isArray(data.holidayReasons)
             ? (data.holidayReasons as Record<string, string>)
             : (prev.holidayReasons || {});
+        const newOverrides: Record<string, string[]> =
+          data.dateScheduleOverrides && typeof data.dateScheduleOverrides === 'object' && !Array.isArray(data.dateScheduleOverrides)
+            ? (data.dateScheduleOverrides as Record<string, string[]>)
+            : (prev.dateScheduleOverrides || {});
         const newRecords: AttendanceRecord[] = Array.isArray(data.attendanceRecords)
           ? (data.attendanceRecords as AttendanceRecord[])
           : (prev.attendanceRecords || []);
@@ -859,10 +948,11 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? (data.classes as ClassSession[])
           : prev.classes;
 
-        // Persist critical roster & holidays
+        // Persist critical roster, holidays & overrides
         savePersistedRoster(newPeople);
         savePersistedNoClassDates(newNoClassDates);
         savePersistedHolidayReasons(newHolidayReasons);
+        savePersistedDateScheduleOverrides(newOverrides);
 
         return {
           ...prev,
@@ -870,6 +960,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           peopleCount: newPeople.length,
           members: syncPeopleToMembers(newPeople),
           weeklyTimetable: newTimetable,
+          dateScheduleOverrides: newOverrides,
           savedDailyAttendance: newDailyAttendance,
           savedDates: newSavedDates,
           noClassDates: newNoClassDates,
@@ -909,7 +1000,12 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedDayData = { ...existingDayData, [personId]: classAttendance };
       const updatedMap = { ...(prev.savedDailyAttendance || {}), [activeDate]: updatedDayData };
 
-      const activeClasses = getScheduledClassesForDate(activeDate, prev.weeklyTimetable, prev.classes || []);
+      const activeClasses = getScheduledClassesForDate(
+        activeDate,
+        prev.weeklyTimetable,
+        prev.classes || [],
+        prev.dateScheduleOverrides
+      );
       const newRecords = buildAttendanceRecords({
         date: activeDate,
         people: prev.people,
@@ -947,7 +1043,8 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const activeClasses = getScheduledClassesForDate(
       activeDate,
       sessionState.weeklyTimetable,
-      sessionState.classes || []
+      sessionState.classes || [],
+      sessionState.dateScheduleOverrides
     );
 
     const personAttendanceForDate = sessionState.savedDailyAttendance?.[activeDate] || sessionState.personAttendance || {};
@@ -971,6 +1068,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         sourceType: sessionState.sourceName,
         filePath: sessionState.excelFilePath,
         weeklyTimetable: sessionState.weeklyTimetable,
+        dateScheduleOverrides: sessionState.dateScheduleOverrides,
         selectedMonth: dateMonthStr,
         selectedYear: dateYear,
         selectedMonthIndex: dateMonthIdx,
@@ -999,7 +1097,12 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     attendanceData?: Record<string, Record<string, boolean>>
   ): Promise<StorageSaveResult> => {
     const mode = sessionState.storageMode || 'excel';
-    const activeClasses = getScheduledClassesForDate(dateStr, sessionState.weeklyTimetable, sessionState.classes || []);
+    const activeClasses = getScheduledClassesForDate(
+      dateStr,
+      sessionState.weeklyTimetable,
+      sessionState.classes || [],
+      sessionState.dateScheduleOverrides
+    );
     const personAttendanceForDate = attendanceData ?? sessionState.savedDailyAttendance?.[dateStr] ?? {};
 
     const dateParts = dateStr.split('-').map(Number);
@@ -1020,6 +1123,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         academicYear: sessionState.academicYear || String(dateYear),
         filePath: sessionState.excelFilePath,
         weeklyTimetable: sessionState.weeklyTimetable,
+        dateScheduleOverrides: sessionState.dateScheduleOverrides,
         selectedMonth: dateMonthStr,
         selectedYear: dateYear,
         selectedMonthIndex: dateMonthIdx,
@@ -1262,6 +1366,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
       peopleCount: currentRoster.length > 0 ? currentRoster.length : null,
       members: syncPeopleToMembers(currentRoster),
       weeklyTimetable: prev.weeklyTimetable || INITIAL_WEEKLY_TIMETABLE,
+      dateScheduleOverrides: prev.dateScheduleOverrides || {},
       excelFilePath: prev.excelFilePath,
       excelFileName: prev.excelFileName,
       googleSpreadsheetId: prev.googleSpreadsheetId,
@@ -1324,6 +1429,13 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addTimetableSubject,
         updateTimetableSubject,
         deleteTimetableSubject,
+
+        // Date Schedule Overrides
+        dateScheduleOverrides: sessionState.dateScheduleOverrides || {},
+        setDateScheduleOverride,
+        removeDateScheduleOverride,
+        getDateScheduleOverride,
+        getEffectiveSubjectsForDate,
 
         // Legacy classes
         addClass,

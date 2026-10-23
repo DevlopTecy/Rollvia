@@ -7,11 +7,18 @@ const ts = require('typescript');
 let passedTests = 0;
 let failedTests = 0;
 
+/**
+ * @param {string} name
+ */
 function pass(name) {
   passedTests++;
   console.log(`  [PASS] ${name}`);
 }
 
+/**
+ * @param {string} name
+ * @param {unknown} err
+ */
 function fail(name, err) {
   failedTests++;
   console.error(`  [FAIL] ${name}:`, err);
@@ -29,6 +36,7 @@ const parserCode = ts.transpileModule(fs.readFileSync(parserTsPath, 'utf8'), {
 
 const parserModule = { exports: {} };
 new Function('exports', 'module', 'require', parserCode)(parserModule.exports, parserModule, require);
+// @ts-ignore
 const { validateQuickCommand } = parserModule.exports;
 
 // Create standard test roster with students 100 through 120

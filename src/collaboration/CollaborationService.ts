@@ -18,6 +18,8 @@ import type {
   CollaborationSession,
   RoomAttendanceUpdate,
   RoomFirebaseState,
+  RoomSaveRequest,
+  RoomSaveResponse,
 } from './types';
 
 export const COLOR_PALETTE = [
@@ -139,7 +141,16 @@ export class CollaborationService {
     }
 
     const stateRef = ref(this.db, `rooms/${code}/state`);
-    const snapshot = await get(stateRef);
+    let snapshot = await get(stateRef);
+
+    // If snapshot doesn't exist yet (host optimistic room publishing in progress), retry up to 4 times
+    if (!snapshot.exists()) {
+      for (let attempt = 1; attempt <= 4; attempt++) {
+        await new Promise((res) => setTimeout(res, 800));
+        snapshot = await get(stateRef);
+        if (snapshot.exists()) break;
+      }
+    }
 
     if (!snapshot.exists()) {
       throw new Error('Room not found. Please verify the room code.');
@@ -221,6 +232,108 @@ export class CollaborationService {
     const path = `rooms/${this.roomCode}/state/attendance/${update.date}/${update.personId}/${update.classId}`;
     const targetRef = ref(this.db, path);
     await set(targetRef, update.value);
+  }
+
+  public async batchPushAttendance(updates: RoomAttendanceUpdate[]): Promise<void> {
+    if (!this.roomCode || updates.length === 0) return;
+
+    const payload: Record<string, boolean> = {};
+    for (const u of updates) {
+      payload[`rooms/${this.roomCode}/state/attendance/${u.date}/${u.personId}/${u.classId}`] = u.value;
+    }
+    const rootRef = ref(this.db);
+    await update(rootRef, payload);
+  }
+
+  /**
+   * Sends a remote save request to the host laptop and waits for response.
+   */
+  public async requestRemoteSave(targetDate: string): Promise<RoomSaveResponse> {
+    if (!this.roomCode) {
+      throw new Error('Not connected to a live collaboration room.');
+    }
+
+    const requestId = `save_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const requestData: RoomSaveRequest = {
+      id: requestId,
+      targetDate,
+      requestedBy: this.myDisplayName || 'Receiver',
+      requesterUid: this.myUid,
+      timestamp: Date.now(),
+    };
+
+    const reqRef = ref(this.db, `rooms/${this.roomCode}/saveRequest`);
+    const respRef = ref(this.db, `rooms/${this.roomCode}/saveResponse`);
+
+    return new Promise<RoomSaveResponse>((resolve, reject) => {
+      let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+      let unsub: Unsubscribe | null = null;
+
+      const cleanup = () => {
+        if (timeoutTimer) clearTimeout(timeoutTimer);
+        if (unsub) {
+          try { unsub(); } catch { /* ignore */ }
+        }
+      };
+
+      // Set 15s timeout
+      timeoutTimer = setTimeout(() => {
+        cleanup();
+        reject(new Error('Save request timed out. The host laptop may be busy, sleeping, or disconnected.'));
+      }, 15000);
+
+      // Listen for host response
+      unsub = onValue(respRef, (snap) => {
+        if (snap.exists()) {
+          const resp = snap.val() as RoomSaveResponse;
+          if (resp && resp.requestId === requestId) {
+            cleanup();
+            if (resp.success) {
+              resolve(resp);
+            } else {
+              reject(new Error(resp.error || 'Host failed to save attendance to disk.'));
+            }
+          }
+        }
+      });
+
+      // Write save request to Firebase
+      set(reqRef, requestData).catch((err) => {
+        cleanup();
+        reject(err);
+      });
+    });
+  }
+
+  /**
+   * Subscribes host to remote save requests from connected receivers.
+   */
+  public subscribeSaveRequest(onSaveRequest: (req: RoomSaveRequest) => void): () => void {
+    if (!this.roomCode) return () => {};
+
+    const reqRef = ref(this.db, `rooms/${this.roomCode}/saveRequest`);
+    let lastHandledId = '';
+    const unsub = onValue(reqRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const req = snapshot.val() as RoomSaveRequest;
+        if (req && req.id && req.id !== lastHandledId && req.requesterUid !== this.myUid) {
+          lastHandledId = req.id;
+          onSaveRequest(req);
+        }
+      }
+    });
+
+    this.unsubscribes.push(unsub);
+    return unsub;
+  }
+
+  /**
+   * Host responds to a remote save request with success or error.
+   */
+  public async respondRemoteSave(response: RoomSaveResponse): Promise<void> {
+    if (!this.roomCode) return;
+    const respRef = ref(this.db, `rooms/${this.roomCode}/saveResponse`);
+    await set(respRef, response);
   }
 
   public async updateCursor(date: string, personId: string): Promise<void> {

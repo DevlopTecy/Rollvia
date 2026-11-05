@@ -20,9 +20,9 @@ interface SimpleQuickPanelProps {
   /** Called by parent to expose a way to focus the command input (e.g., for Ctrl+Q) */
   onRegisterFocus?: (fn: () => void) => void;
   onMonthChange?: (year: number, monthIndex: number) => void;
-  onSave?: (targetDateStr?: string) => Promise<void> | void;
-  onUndo?: () => void;
-  onRedo?: () => void;
+  onSave?: (targetDateStr?: string) => Promise<{ success: boolean; error?: string } | void> | void;
+  onUndo?: () => { success: boolean; message?: string } | void;
+  onRedo?: () => { success: boolean; message?: string } | void;
   onMarkHoliday?: (dateStr: string, reason: string) => void;
   onRemoveHoliday?: (dateStr: string) => void;
   getDayAttendance?: (dateStr: string) => Record<string, Record<string, boolean>>;
@@ -252,7 +252,15 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
       if (dType === 'SAVE') {
         if (onSave) {
           try {
-            await onSave(targetDateStr);
+            const res = await onSave(targetDateStr);
+            if (res && typeof res === 'object' && res.success === false) {
+              setStatusFeedback({
+                type: 'error',
+                title: 'Save Failed',
+                details: res.error || 'Could not save attendance records.',
+              });
+              return;
+            }
             setStatusFeedback({
               type: 'success',
               title: 'Saved Successfully',
@@ -271,7 +279,15 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
 
       if (dType === 'UNDO') {
         if (onUndo) {
-          onUndo();
+          const res = onUndo();
+          if (res && typeof res === 'object' && res.success === false) {
+            setStatusFeedback({
+              type: 'error',
+              title: 'Undo Unavailable',
+              details: res.message || `No undo history available for ${formattedTargetDate}.`,
+            });
+            return;
+          }
           setStatusFeedback({
             type: 'success',
             title: 'Undo Executed',
@@ -286,7 +302,15 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
 
       if (dType === 'REDO') {
         if (onRedo) {
-          onRedo();
+          const res = onRedo();
+          if (res && typeof res === 'object' && res.success === false) {
+            setStatusFeedback({
+              type: 'error',
+              title: 'Redo Unavailable',
+              details: res.message || `No redo history available for ${formattedTargetDate}.`,
+            });
+            return;
+          }
           setStatusFeedback({
             type: 'success',
             title: 'Redo Executed',
@@ -356,15 +380,26 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
         });
 
         const totalMarked = presentCount + absentCount;
-        const pct = totalMarked > 0 ? ((presentCount / totalMarked) * 100).toFixed(1) : '0.0';
         const label = selectedClass ? selectedClass.name : 'Day Summary';
+
+        if (totalMarked === 0) {
+          setStatusFeedback({
+            type: 'success',
+            title: `${label}: Not Marked Yet`,
+            details: `0 of ${people.length} students have recorded marks for ${formattedTargetDate}.`,
+          });
+          setCommandInput('');
+          return;
+        }
+
+        const pct = ((presentCount / totalMarked) * 100).toFixed(1);
         const absList = absentRolls.length > 0
           ? `\nAbsentees: ${absentRolls.slice(0, 8).join(', ')}${absentRolls.length > 8 ? ` (+${absentRolls.length - 8} more)` : ''}`
           : '\nZero Absentees (100% Present!)';
 
         setStatusFeedback({
           type: 'success',
-          title: `${label}: ${presentCount}/${totalMarked || people.length} Present (${pct}%)`,
+          title: `${label}: ${presentCount}/${totalMarked} Present (${pct}%)`,
           details: `Date: ${formattedTargetDate}${absList}`,
         });
         setCommandInput('');
@@ -377,7 +412,7 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
           onApplyQuickAttendance(targetDateStr, selectedClass, allRolls, false);
           setStatusFeedback({
             type: 'success',
-            title: 'Attendance Cleared',
+            title: 'Attendance Reset to Absent',
             details: `Marked all ${allRolls.length} students Absent for ${selectedClass.name}.`,
           });
           setCommandInput('');

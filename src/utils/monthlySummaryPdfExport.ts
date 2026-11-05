@@ -220,17 +220,15 @@ export function generateMonthlySummaryPdfBuffer(
           // Academic formal centered header
           strokeLine(leftMargin, bannerTop - 34, leftMargin + printableW, bannerTop - 34, 0.25, 0.25, 0.25, 1.2);
           strokeLine(leftMargin, bannerTop - 36, leftMargin + printableW, bannerTop - 36, 0.25, 0.25, 0.25, 0.5);
-          drawText(institutionName.toUpperCase(), pageW / 2 - 120, bannerTop - 12, 10, true, 0.05, 0.05, 0.05);
-          drawText(
-            `MONTHLY ATTENDANCE STATEMENT \u2022 ${departmentName.toUpperCase()} (${academicYear})`,
-            pageW / 2 - 140,
-            bannerTop - 25,
-            8,
-            false,
-            0.2,
-            0.2,
-            0.2
-          );
+          const instTitle = institutionName.toUpperCase();
+          const approxW1 = instTitle.length * 5.8;
+          const posX1 = Math.max(leftMargin + 10, (pageW - approxW1) / 2);
+          drawText(instTitle, posX1, bannerTop - 12, 10, true, 0.05, 0.05, 0.05);
+
+          const subTitle = `MONTHLY ATTENDANCE STATEMENT \u2022 ${departmentName.toUpperCase()} (${academicYear})`;
+          const approxW2 = subTitle.length * 4.6;
+          const posX2 = Math.max(leftMargin + 10, (pageW - approxW2) / 2);
+          drawText(subTitle, posX2, bannerTop - 25, 8, false, 0.2, 0.2, 0.2);
         } else if (isEmeraldTheme) {
           // Executive Emerald Header
           fillRect(leftMargin, bannerTop - 36, printableW, 36, 0.06, 0.36, 0.22);
@@ -268,9 +266,9 @@ export function generateMonthlySummaryPdfBuffer(
           drawText('Rollvia - Monthly Attendance Summary (Continued)', leftMargin + 8, bannerTop - 16, 10, true, 0.1, 0.1, 0.1);
           drawText(
             `${institutionName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
-            leftMargin + 290,
-            bannerTop - 16,
-            8,
+            leftMargin + 8,
+            bannerTop - 27,
+            7.5,
             false,
             0.35,
             0.35,

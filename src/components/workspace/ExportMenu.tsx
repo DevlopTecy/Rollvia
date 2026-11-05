@@ -150,6 +150,10 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
         profilesMap.set(p.id, calculateStudentAttendanceProfile(p, monthRecs));
       }
 
+      const monthPrefix = `${activeYr}-${String(activeMo + 1).padStart(2, '0')}`;
+      const savedDatesCount = (sessionState.savedDates || []).filter((d) => d.startsWith(monthPrefix)).length;
+      const holidaysCount = (noClassDates || []).filter((d) => d.startsWith(monthPrefix)).length;
+
       downloadMonthlyAttendancePdf({
         institutionName,
         departmentName,
@@ -157,8 +161,8 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
         monthStr: `${MONTH_NAMES[activeMo]} ${activeYr}`,
         roster: people,
         profiles: profilesMap,
-        savedDatesCount: (sessionState.savedDates || []).length,
-        holidaysCount: (noClassDates || []).length,
+        savedDatesCount,
+        holidaysCount,
         theme: exportTheme,
       });
 

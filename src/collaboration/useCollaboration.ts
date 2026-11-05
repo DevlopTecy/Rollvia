@@ -5,6 +5,8 @@ import type {
   CollaboratorPresence,
   RoomFirebaseState,
   RoomAttendanceUpdate,
+  RoomSaveRequest,
+  RoomSaveResponse,
 } from './types';
 
 const STORAGE_KEY_NAME = 'rollvia_connection_name';
@@ -13,6 +15,7 @@ export interface UseCollaborationOptions {
   getSnapshot?: () => RoomFirebaseState;
   onRemoteStateReceived?: (state: RoomFirebaseState) => void;
   onRemoteAttendanceCell?: (update: RoomAttendanceUpdate) => void;
+  onRemoteSaveRequested?: (req: RoomSaveRequest) => void;
 }
 
 export const useCollaboration = (options?: UseCollaborationOptions) => {
@@ -80,6 +83,11 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
           // Listen for state changes (e.g. from receivers)
           service.subscribeState((remoteState) => {
             options?.onRemoteStateReceived?.(remoteState);
+          });
+
+          // Listen for remote save requests from receivers
+          service.subscribeSaveRequest((req) => {
+            options?.onRemoteSaveRequested?.(req);
           });
         } catch (publishErr: unknown) {
           const msg = publishErr instanceof Error ? publishErr.message : 'Failed to publish room.';
@@ -166,6 +174,43 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
     }
   }, [session]);
 
+  const broadcastAttendanceCell = useCallback(
+    async (update: RoomAttendanceUpdate): Promise<void> => {
+      if (session && serviceRef.current) {
+        await serviceRef.current.pushAttendanceChange(update).catch(() => {});
+      }
+    },
+    [session]
+  );
+
+  const broadcastAttendanceBatch = useCallback(
+    async (updates: RoomAttendanceUpdate[]): Promise<void> => {
+      if (session && serviceRef.current) {
+        await serviceRef.current.batchPushAttendance(updates).catch(() => {});
+      }
+    },
+    [session]
+  );
+
+  const requestRemoteSave = useCallback(
+    async (targetDate: string): Promise<RoomSaveResponse> => {
+      if (!session || !serviceRef.current) {
+        throw new Error('Not connected to a live collaboration room.');
+      }
+      return serviceRef.current.requestRemoteSave(targetDate);
+    },
+    [session]
+  );
+
+  const respondRemoteSave = useCallback(
+    async (response: RoomSaveResponse): Promise<void> => {
+      if (session && serviceRef.current) {
+        await serviceRef.current.respondRemoteSave(response);
+      }
+    },
+    [session]
+  );
+
   // Notify Electron IPC about collaboration session status
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as unknown as { electronAPI?: { send?: (ch: string) => void } }).electronAPI?.send) {
@@ -200,6 +245,10 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
     leaveRoom,
     updateMyCursor,
     clearMyCursor,
+    broadcastAttendanceCell,
+    broadcastAttendanceBatch,
+    requestRemoteSave,
+    respondRemoteSave,
     getService: () => serviceRef.current,
     isConnected: !!session,
     isConnecting,

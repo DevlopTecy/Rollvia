@@ -192,8 +192,8 @@ export const AttendanceGrid: React.FC = () => {
     setRedoStack([]);
   };
 
-  const handleUndo = () => {
-    if (undoStack.length === 0) return;
+  const handleUndo = (): { success: boolean; message?: string } => {
+    if (undoStack.length === 0) return { success: false, message: 'No undo history available.' };
     const previous = undoStack[undoStack.length - 1];
     const current = editedData[activeDate] ?? savedAttendance;
     setRedoStack((prev) => [...prev, current]);
@@ -201,10 +201,11 @@ export const AttendanceGrid: React.FC = () => {
     setEditedData((prev) => ({ ...prev, [activeDate]: previous }));
     setIsEditingActiveDate(true);
     saveRecoveryDraft(activeDate, previous);
+    return { success: true };
   };
 
-  const handleRedo = () => {
-    if (redoStack.length === 0) return;
+  const handleRedo = (): { success: boolean; message?: string } => {
+    if (redoStack.length === 0) return { success: false, message: 'No redo history available.' };
     const next = redoStack[redoStack.length - 1];
     const current = editedData[activeDate] ?? savedAttendance;
     setUndoStack((prev) => [...prev, current]);
@@ -212,10 +213,11 @@ export const AttendanceGrid: React.FC = () => {
     setEditedData((prev) => ({ ...prev, [activeDate]: next }));
     setIsEditingActiveDate(true);
     saveRecoveryDraft(activeDate, next);
+    return { success: true };
   };
 
   // Keyboard shortcut listener for Ctrl+Z, Ctrl+Y, Ctrl+S, Ctrl+Q, and Escape
-  const handleSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const handleSaveRef = useRef<((targetDateOverride?: string) => Promise<unknown>) | null>(null);
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -284,6 +286,23 @@ export const AttendanceGrid: React.FC = () => {
       saveRecoveryDraft(activeDate, newDay);
       return { ...prev, [activeDate]: newDay };
     });
+
+    if (collaboration.session) {
+      collaboration.broadcastAttendanceCell({
+        date: activeDate,
+        personId,
+        classId: subjectId,
+        value: present,
+      });
+      if (subjectName && subjectName !== subjectId) {
+        collaboration.broadcastAttendanceCell({
+          date: activeDate,
+          personId,
+          classId: subjectName,
+          value: present,
+        });
+      }
+    }
   };
 
   // Scope selection for Attendance Tools: 'all' or subjectId
@@ -338,6 +357,17 @@ export const AttendanceGrid: React.FC = () => {
       saveRecoveryDraft(activeDate, updated);
       return { ...prev, [activeDate]: updated };
     });
+
+    if (collaboration.session) {
+      const updates: Array<{ date: string; personId: string; classId: string; value: boolean }> = [];
+      people.forEach((p) => {
+        updates.push({ date: activeDate, personId: p.id, classId: sub.id, value: present });
+        if (sub.name !== sub.id) {
+          updates.push({ date: activeDate, personId: p.id, classId: sub.name, value: present });
+        }
+      });
+      collaboration.broadcastAttendanceBatch(updates);
+    }
   };
 
   const applyAllClassesBulk = (present: boolean) => {
@@ -358,6 +388,19 @@ export const AttendanceGrid: React.FC = () => {
       saveRecoveryDraft(activeDate, updated);
       return { ...prev, [activeDate]: updated };
     });
+
+    if (collaboration.session) {
+      const updates: Array<{ date: string; personId: string; classId: string; value: boolean }> = [];
+      people.forEach((p) => {
+        activeDateSubjects.forEach((s) => {
+          updates.push({ date: activeDate, personId: p.id, classId: s.id, value: present });
+          if (s.name !== s.id) {
+            updates.push({ date: activeDate, personId: p.id, classId: s.name, value: present });
+          }
+        });
+      });
+      collaboration.broadcastAttendanceBatch(updates);
+    }
   };
 
   const promptSubjectBulk = (subjectId: string, present: boolean) => {
@@ -389,13 +432,58 @@ export const AttendanceGrid: React.FC = () => {
     });
   };
 
-  const handleSave = async (targetDateOverride?: string | React.MouseEvent) => {
-    if (!sessionState.excelFilePath) {
-      setSaveStatus({ msg: 'Save failed: No Excel workbook configured.', isError: true });
-      return;
+  const isReceiver = collaboration.session?.role === 'receiver';
+
+  const handleSave = async (targetDateOverride?: string | React.MouseEvent): Promise<{ success: boolean; error?: string }> => {
+    const dateToSave = typeof targetDateOverride === 'string' ? targetDateOverride : activeDate;
+
+    if (isNoClassDate(dateToSave)) {
+      const errMsg = 'Cannot save: This date is marked as a Holiday / No Classes.';
+      setSaveStatus({ msg: errMsg, isError: true });
+      return { success: false, error: errMsg };
     }
 
-    const dateToSave = typeof targetDateOverride === 'string' ? targetDateOverride : activeDate;
+    if (isReceiver) {
+      setIsSaving(true);
+      setSaveStatus({ msg: 'Requesting host PC to save…', isError: false });
+      try {
+        const resp = await collaboration.requestRemoteSave(dateToSave);
+        if (resp.success) {
+          setSaveStatus({ msg: '✓ Saved on Host PC', isError: false });
+          clearRecoveryDraft(dateToSave);
+          setDismissedRecoveryDates((p) => ({ ...p, [dateToSave]: true }));
+          setUndoStack([]);
+          setRedoStack([]);
+          if (dateToSave === activeDate) {
+            setIsEditingActiveDate(false);
+          }
+          setEditedData((prev) => {
+            const next = { ...prev };
+            delete next[dateToSave];
+            return next;
+          });
+          return { success: true };
+        } else {
+          const errMsg = resp.error || 'Remote save failed';
+          setSaveStatus({ msg: `Save failed: ${errMsg}`, isError: true });
+          return { success: false, error: errMsg };
+        }
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : 'Remote save failed';
+        setSaveStatus({ msg: `Save failed: ${errMsg}`, isError: true });
+        return { success: false, error: errMsg };
+      } finally {
+        setIsSaving(false);
+      }
+    }
+
+    // Host Save
+    if (!sessionState.excelFilePath) {
+      const errMsg = 'Save failed: No Excel workbook configured.';
+      setSaveStatus({ msg: errMsg, isError: true });
+      return { success: false, error: errMsg };
+    }
+
     const dataToSave = editedData[dateToSave] ?? getDailyAttendance(dateToSave);
 
     setIsSaving(true);
@@ -416,13 +504,16 @@ export const AttendanceGrid: React.FC = () => {
           delete next[dateToSave];
           return next;
         });
+        return { success: true };
       } else {
         const errMsg = result.error || result.message || 'Save failed.';
         setSaveStatus({ msg: `Save failed: ${errMsg}`, isError: true });
+        return { success: false, error: errMsg };
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Save failed.';
       setSaveStatus({ msg: `Save failed: ${errMsg}`, isError: true });
+      return { success: false, error: errMsg };
     } finally {
       setIsSaving(false);
     }
@@ -482,6 +573,24 @@ export const AttendanceGrid: React.FC = () => {
           // ignore
         }
 
+        if (collaboration.session) {
+          const updates: Array<{ date: string; personId: string; classId: string; value: boolean }> = [];
+          for (const rollNum of rollNumbers) {
+            const person = people.find((p) => {
+              const roll = String(p.rollNumber || '').trim();
+              const id = String(p.id || '').trim();
+              return roll === rollNum || (!roll && id === rollNum);
+            });
+            if (person) {
+              updates.push({ date: targetDate, personId: person.id, classId: subject.id, value: isPresent });
+              if (subject.name !== subject.id) {
+                updates.push({ date: targetDate, personId: person.id, classId: subject.name, value: isPresent });
+              }
+            }
+          }
+          collaboration.broadcastAttendanceBatch(updates);
+        }
+
         return { ...prev, [targetDate]: updated };
       });
 
@@ -502,7 +611,7 @@ export const AttendanceGrid: React.FC = () => {
         count: 0,
       };
     }
-  }, [people, editedData, getDailyAttendance, activeDate, setActiveDate]);
+  }, [people, editedData, getDailyAttendance, activeDate, setActiveDate, collaboration]);
 
   // Navigation helpers
   const handlePrevDay = () => {
@@ -1171,6 +1280,7 @@ export const AttendanceGrid: React.FC = () => {
                     type="button"
                     onClick={() => handleSave()}
                     disabled={isSaving || activeDateSubjects.length === 0}
+                    title={isReceiver ? "Save attendance directly to the Host's PC workbook" : "Save attendance to local Excel workbook"}
                     style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -1189,7 +1299,7 @@ export const AttendanceGrid: React.FC = () => {
                     }}
                   >
                     {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                    {isSaving ? 'Saving…' : 'Save'}
+                    {isSaving ? (isReceiver ? 'Saving on Host PC…' : 'Saving…') : (isReceiver ? 'Save to Host PC' : 'Save')}
                   </button>
                 </>
               )}
@@ -1306,6 +1416,7 @@ export const AttendanceGrid: React.FC = () => {
       ) : (
         <div style={{ flex: 1, overflow: 'auto' }}>
           <table
+            onMouseLeave={() => collaboration?.clearMyCursor()}
             style={{
               width: '100%',
               borderCollapse: 'collapse',
@@ -1707,6 +1818,15 @@ export const AttendanceGrid: React.FC = () => {
                 onClick={() => {
                   markDateAsHoliday(activeDate, holidayReasonInput);
                   setShowHolidayModal(false);
+                  setEditedData((prev) => {
+                    const next = { ...prev };
+                    delete next[activeDate];
+                    return next;
+                  });
+                  clearRecoveryDraft(activeDate);
+                  setIsEditingActiveDate(false);
+                  setUndoStack([]);
+                  setRedoStack([]);
                 }}
                 style={{
                   padding: '0.35rem 0.9rem',

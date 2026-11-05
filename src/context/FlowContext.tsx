@@ -167,6 +167,8 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStateRef.current = sessionState;
   }, [sessionState]);
 
+  const saveDateToStorageRef = useRef<((dateStr: string) => Promise<StorageSaveResult>) | null>(null);
+
   const collaboration = useCollaboration({
     getSnapshot: () => {
       const s = sessionStateRef.current;
@@ -203,6 +205,39 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           departmentName: isReceiver && remoteState.departmentName ? remoteState.departmentName : prev.departmentName,
         };
       });
+    },
+    onRemoteSaveRequested: async (req) => {
+      try {
+        if (!saveDateToStorageRef.current) {
+          throw new Error('Host save handler is not ready.');
+        }
+        const res = await saveDateToStorageRef.current(req.targetDate);
+        if (res.success) {
+          collaboration.respondRemoteSave({
+            requestId: req.id,
+            targetDate: req.targetDate,
+            success: true,
+            timestamp: Date.now(),
+          });
+        } else {
+          collaboration.respondRemoteSave({
+            requestId: req.id,
+            targetDate: req.targetDate,
+            success: false,
+            error: res.error || 'Failed to save attendance on host PC',
+            timestamp: Date.now(),
+          });
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown host save error';
+        collaboration.respondRemoteSave({
+          requestId: req.id,
+          targetDate: req.targetDate,
+          success: false,
+          error: msg,
+          timestamp: Date.now(),
+        });
+      }
     },
   });
 
@@ -1048,9 +1083,40 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const getMonthAttendanceRecords = (year: number, monthIndex: number): AttendanceRecord[] => {
     const prefix = `${year}-${String(monthIndex + 1).padStart(2, '0')}-`;
     const holidays = new Set(sessionState.noClassDates || []);
-    return (sessionState.attendanceRecords || []).filter(
+    const existingRecs = (sessionState.attendanceRecords || []).filter(
       (r) => r.date.startsWith(prefix) && !holidays.has(r.date)
     );
+
+    // Also synthesize records from savedDailyAttendance for dates in this month not yet in attendanceRecords
+    const recordedDates = new Set(existingRecs.map((r) => r.date));
+    const dailyMap = sessionState.savedDailyAttendance || {};
+    const syntheticRecs: AttendanceRecord[] = [];
+
+    for (const [dateStr, personMap] of Object.entries(dailyMap)) {
+      if (dateStr.startsWith(prefix) && !holidays.has(dateStr) && !recordedDates.has(dateStr)) {
+        const scheduled = getScheduledClassesForDate(dateStr, sessionState.weeklyTimetable, sessionState.classes || [], sessionState.dateScheduleOverrides);
+        for (const person of sessionState.people) {
+          const pData = personMap[person.id] || {};
+          for (const sub of scheduled) {
+            const mark = pData[sub.id] ?? pData[sub.name];
+            if (mark !== undefined) {
+              syntheticRecs.push({
+                id: `rec_${dateStr}_${person.id}_${sub.id}`,
+                date: dateStr,
+                personId: person.id,
+                personName: person.name,
+                rollNumber: person.rollNumber || '',
+                classId: sub.id,
+                className: sub.name,
+                status: mark ? 'Present' : 'Absent',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return [...existingRecs, ...syntheticRecs];
   };
 
   // ─── Legacy: single-date attendance ──────────────────────────────────────────
@@ -1159,6 +1225,19 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     attendanceData?: Record<string, Record<string, boolean>>
   ): Promise<StorageSaveResult> => {
     const mode = sessionState.storageMode || 'excel';
+
+    if (sessionState.noClassDates && sessionState.noClassDates.includes(dateStr)) {
+      return {
+        success: false,
+        storageMode: mode,
+        destination: sessionState.excelFilePath || '',
+        recordsCount: 0,
+        timestamp: new Date().toISOString(),
+        message: 'Cannot save: This date is marked as a Holiday / No Classes.',
+        error: 'Date is marked as a Holiday',
+      };
+    }
+
     const activeClasses = getScheduledClassesForDate(
       dateStr,
       sessionState.weeklyTimetable,
@@ -1223,6 +1302,10 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     return result;
   };
+
+  useEffect(() => {
+    saveDateToStorageRef.current = saveDateToStorage;
+  });
 
   // ─── Excel ────────────────────────────────────────────────────────────────────
 

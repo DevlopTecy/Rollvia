@@ -37,3 +37,20 @@ export interface RoomFirebaseState {
   departmentName: string;
 }
 
+export interface RoomSaveRequest {
+  id: string;
+  targetDate: string;
+  requestedBy: string;
+  requesterUid: string;
+  timestamp: number;
+}
+
+export interface RoomSaveResponse {
+  requestId: string;
+  targetDate: string;
+  success: boolean;
+  error?: string;
+  timestamp: number;
+}
+
+

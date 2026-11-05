@@ -14,7 +14,7 @@
 
 - Firebase project: `rollvia-collab`, Asia Southeast region
 - `databaseURL`: `https://rollvia-collab-default-rtdb.asia-southeast1.firebasedatabase.app`
-- `apiKey`: `AIzaSyB4-TaNFwhrdTiQlhSFA1r-skHEK-QgQM4`
+- `apiKey`: `[REDACTED_CLIENT_KEY]`
 - `projectId`: `rollvia-collab`
 - `appId`: `1:1063653835208:web:6c6b7355e3a64d6cd180fd`
 - Do NOT use Firebase Analytics (`getAnalytics`) — it requires a browser environment Electron doesn't fully support
@@ -59,7 +59,7 @@
   import type { FirebaseOptions } from 'firebase/app';
 
   const firebaseConfig: FirebaseOptions = {
-    apiKey: 'AIzaSyB4-TaNFwhrdTiQlhSFA1r-skHEK-QgQM4',
+    apiKey: '[REDACTED_CLIENT_KEY]',
     authDomain: 'rollvia-collab.firebaseapp.com',
     databaseURL: 'https://rollvia-collab-default-rtdb.asia-southeast1.firebasedatabase.app',
     projectId: 'rollvia-collab',

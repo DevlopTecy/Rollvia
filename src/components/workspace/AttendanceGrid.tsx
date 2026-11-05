@@ -25,6 +25,7 @@ import { SimpleQuickPanel } from './SimpleQuickPanel';
 import { MonthlyAttendanceSummaryModal } from './MonthlyAttendanceSummaryModal';
 import { ExportMenu } from './ExportMenu';
 import { DayScheduleEditor } from './DayScheduleEditor';
+import { CellCursor } from '../collaboration/CellCursor';
 // PDF export is handled via ExportMenu using downloadMonthlyAttendancePdf
 
 const HOLIDAY_PRESETS = ['College Holiday', 'Festival', 'Exam', 'No Classes'];
@@ -46,6 +47,7 @@ export const AttendanceGrid: React.FC = () => {
     removeDateHoliday,
     saveDateToStorage,
     setWorkspaceMonth,
+    collaboration,
   } = useFlow();
 
   const { people, selectedYear, selectedMonthIndex } = sessionState;
@@ -1385,6 +1387,7 @@ export const AttendanceGrid: React.FC = () => {
                 return (
                   <tr
                     key={person.id}
+                    onMouseEnter={() => collaboration?.updateMyCursor(activeDate, person.id)}
                     style={{ backgroundColor: rowBg, borderBottom: '1px solid var(--border-subtle)' }}
                   >
                     {/* # */}
@@ -1407,8 +1410,10 @@ export const AttendanceGrid: React.FC = () => {
                         fontWeight: 600,
                         color: 'var(--text-primary)',
                         borderRight: '1px solid var(--border-subtle)',
+                        position: 'relative',
                       }}
                     >
+                      <CellCursor date={activeDate} personId={person.id} />
                       {person.name}
                     </td>
 

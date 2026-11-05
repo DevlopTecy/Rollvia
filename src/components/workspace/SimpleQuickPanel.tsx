@@ -20,6 +20,12 @@ interface SimpleQuickPanelProps {
   /** Called by parent to expose a way to focus the command input (e.g., for Ctrl+Q) */
   onRegisterFocus?: (fn: () => void) => void;
   onMonthChange?: (year: number, monthIndex: number) => void;
+  onSave?: (targetDateStr?: string) => Promise<void> | void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onMarkHoliday?: (dateStr: string, reason: string) => void;
+  onRemoveHoliday?: (dateStr: string) => void;
+  getDayAttendance?: (dateStr: string) => Record<string, Record<string, boolean>>;
 }
 
 export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
@@ -32,6 +38,12 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
   onApplyQuickAttendance,
   onRegisterFocus,
   onMonthChange,
+  onSave,
+  onUndo,
+  onRedo,
+  onMarkHoliday,
+  onRemoveHoliday,
+  getDayAttendance,
 }) => {
   // Parse active date for initial month and day
   const [activeY, activeM, activeD] = useMemo(() => {
@@ -226,11 +238,157 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Execute Command
-  const handleExecute = () => {
+  // Execute Command or Directive
+  const handleExecute = async () => {
     setStatusFeedback(null);
 
-    // 1. Mandatory class validation
+    // 1. Check for command or directive
+    const validation = validateQuickCommand(commandInput, people);
+
+    // ── Handle Quick Action Directives ──────────────────────────────────────
+    if (validation.isValid && validation.isDirective && validation.directiveType) {
+      const dType = validation.directiveType;
+
+      if (dType === 'SAVE') {
+        if (onSave) {
+          try {
+            await onSave(targetDateStr);
+            setStatusFeedback({
+              type: 'success',
+              title: 'Saved Successfully',
+              details: `All attendance records for ${formattedTargetDate} have been saved.`,
+            });
+            setCommandInput('');
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : 'Save failed';
+            setStatusFeedback({ type: 'error', title: 'Save Failed', details: msg });
+          }
+        } else {
+          setStatusFeedback({ type: 'error', title: 'Save Unavailable', details: 'No save handler attached.' });
+        }
+        return;
+      }
+
+      if (dType === 'UNDO') {
+        if (onUndo) {
+          onUndo();
+          setStatusFeedback({
+            type: 'success',
+            title: 'Undo Executed',
+            details: 'Reverted previous attendance modification.',
+          });
+          setCommandInput('');
+        } else {
+          setStatusFeedback({ type: 'error', title: 'Undo Unavailable', details: 'No undo history available.' });
+        }
+        return;
+      }
+
+      if (dType === 'REDO') {
+        if (onRedo) {
+          onRedo();
+          setStatusFeedback({
+            type: 'success',
+            title: 'Redo Executed',
+            details: 'Restored undone attendance modification.',
+          });
+          setCommandInput('');
+        } else {
+          setStatusFeedback({ type: 'error', title: 'Redo Unavailable', details: 'No redo history available.' });
+        }
+        return;
+      }
+
+      if (dType === 'HOLIDAY') {
+        const reason = validation.directivePayload || 'College Holiday';
+        if (onMarkHoliday) {
+          onMarkHoliday(targetDateStr, reason);
+          setStatusFeedback({
+            type: 'success',
+            title: 'Holiday Marked',
+            details: `${formattedTargetDate} marked as Holiday (${reason}).`,
+          });
+          setCommandInput('');
+        }
+        return;
+      }
+
+      if (dType === 'UNHOLIDAY') {
+        if (onRemoveHoliday) {
+          onRemoveHoliday(targetDateStr);
+          setStatusFeedback({
+            type: 'success',
+            title: 'Holiday Removed',
+            details: `Restored regular weekday timetable for ${formattedTargetDate}.`,
+          });
+          setCommandInput('');
+        }
+        return;
+      }
+
+      if (dType === 'STATS') {
+        const dayData = getDayAttendance ? getDayAttendance(targetDateStr) : {};
+        let presentCount = 0;
+        let absentCount = 0;
+        const absentRolls: string[] = [];
+
+        people.forEach((p) => {
+          const pData = dayData[p.id];
+          if (!pData) return;
+          if (selectedClass) {
+            const val = pData[selectedClass.id] ?? pData[selectedClass.name];
+            if (val === true) {
+              presentCount++;
+            } else if (val === false) {
+              absentCount++;
+              absentRolls.push(p.rollNumber || p.name);
+            }
+          } else {
+            const hasAnyPresent = Object.values(pData).some((v) => v === true);
+            const hasAnyAbsent = Object.values(pData).some((v) => v === false);
+            if (hasAnyPresent) {
+              presentCount++;
+            } else if (hasAnyAbsent) {
+              absentCount++;
+              absentRolls.push(p.rollNumber || p.name);
+            }
+          }
+        });
+
+        const totalMarked = presentCount + absentCount;
+        const pct = totalMarked > 0 ? ((presentCount / totalMarked) * 100).toFixed(1) : '0.0';
+        const label = selectedClass ? selectedClass.name : 'Day Summary';
+        const absList = absentRolls.length > 0
+          ? `\nAbsentees: ${absentRolls.slice(0, 8).join(', ')}${absentRolls.length > 8 ? ` (+${absentRolls.length - 8} more)` : ''}`
+          : '\nZero Absentees (100% Present!)';
+
+        setStatusFeedback({
+          type: 'success',
+          title: `${label}: ${presentCount}/${totalMarked || people.length} Present (${pct}%)`,
+          details: `Date: ${formattedTargetDate}${absList}`,
+        });
+        setCommandInput('');
+        return;
+      }
+
+      if (dType === 'CLEAR') {
+        if (selectedClass) {
+          const allRolls = people.map((p) => String(p.rollNumber || p.id).trim()).filter(Boolean);
+          onApplyQuickAttendance(targetDateStr, selectedClass, allRolls, false);
+          setStatusFeedback({
+            type: 'success',
+            title: 'Attendance Cleared',
+            details: `Marked all ${allRolls.length} students Absent for ${selectedClass.name}.`,
+          });
+          setCommandInput('');
+        } else {
+          setStatusFeedback({ type: 'error', title: 'Clear Failed', details: 'Select a class first.' });
+        }
+        return;
+      }
+    }
+
+    // 2. Mandatory class validation for P:/A: commands
     if (availableClasses.length === 0) {
       setStatusFeedback({
         type: 'error',
@@ -249,8 +407,6 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
       return;
     }
 
-    // 2. Strict command syntax and student roster validation
-    const validation = validateQuickCommand(commandInput, people);
     if (!validation.isValid || !validation.action || !validation.rollNumbers) {
       setStatusFeedback({
         type: 'error',
@@ -458,7 +614,7 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
                   onClose();
                 }
               }}
-              placeholder="P:113,144,102"
+              placeholder="e.g. P:101:105,110 or SAVE"
               style={{
                 width: '100%',
                 padding: '0.35rem 0.55rem',
@@ -478,16 +634,16 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
           <button
             type="button"
             onClick={handleExecute}
-            disabled={!selectedClass || availableClasses.length === 0}
+            disabled={!commandInput.trim()}
             style={{
-              backgroundColor: !selectedClass || availableClasses.length === 0 ? 'var(--border-strong)' : 'var(--primary-600)',
+              backgroundColor: !commandInput.trim() ? 'var(--border-strong)' : 'var(--primary-600)',
               color: '#fff',
               border: 'none',
               borderRadius: 'var(--radius-sm)',
               padding: '0.4rem 0.8rem',
               fontSize: '0.8rem',
               fontWeight: 700,
-              cursor: !selectedClass || availableClasses.length === 0 ? 'not-allowed' : 'pointer',
+              cursor: !commandInput.trim() ? 'not-allowed' : 'pointer',
               transition: 'background-color 0.15s ease',
               marginTop: '0.2rem',
             }}
@@ -543,7 +699,7 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
             }}
           >
             <div style={{ fontWeight: 600, color: 'var(--text-muted)', fontSize: '0.68rem' }}>
-              Command Examples:
+              Command Examples & Directives:
             </div>
             <div
               style={{
@@ -561,6 +717,10 @@ export const SimpleQuickPanel: React.FC<SimpleQuickPanelProps> = ({
               <div>P:100:105</div>
               <div>A:100:105</div>
               <div style={{ color: 'var(--primary-600)', fontWeight: 500 }}>P:100:105,110,115:118</div>
+              <div style={{ height: '1px', backgroundColor: 'var(--border-subtle)', margin: '3px 0' }} />
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>Directives:</div>
+              <div style={{ color: 'var(--success-600)', fontWeight: 600 }}>SAVE • UNDO • REDO • STATS</div>
+              <div style={{ color: 'var(--warning-600)', fontWeight: 600 }}>HOLIDAY:Diwali • UNHOLIDAY</div>
             </div>
           </div>
         </div>

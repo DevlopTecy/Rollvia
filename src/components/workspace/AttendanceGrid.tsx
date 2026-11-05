@@ -389,28 +389,31 @@ export const AttendanceGrid: React.FC = () => {
     });
   };
 
-  const handleSave = async () => {
+  const handleSave = async (targetDateOverride?: string | React.MouseEvent) => {
     if (!sessionState.excelFilePath) {
       setSaveStatus({ msg: 'Save failed: No Excel workbook configured.', isError: true });
       return;
     }
 
-    const dataToSave = editedData[activeDate] ?? savedAttendance;
+    const dateToSave = typeof targetDateOverride === 'string' ? targetDateOverride : activeDate;
+    const dataToSave = editedData[dateToSave] ?? getDailyAttendance(dateToSave);
 
     setIsSaving(true);
     setSaveStatus(null);
     try {
-      const result = await saveDateToStorage(activeDate, dataToSave);
+      const result = await saveDateToStorage(dateToSave, dataToSave);
       if (result.success) {
         setSaveStatus({ msg: 'Saved', isError: false });
-        clearRecoveryDraft(activeDate);
-        setDismissedRecoveryDates((p) => ({ ...p, [activeDate]: true }));
+        clearRecoveryDraft(dateToSave);
+        setDismissedRecoveryDates((p) => ({ ...p, [dateToSave]: true }));
         setUndoStack([]);
         setRedoStack([]);
-        setIsEditingActiveDate(false); // Return to View Mode with updated data
+        if (dateToSave === activeDate) {
+          setIsEditingActiveDate(false); // Return to View Mode with updated data
+        }
         setEditedData((prev) => {
           const next = { ...prev };
-          delete next[activeDate];
+          delete next[dateToSave];
           return next;
         });
       } else {
@@ -1166,7 +1169,7 @@ export const AttendanceGrid: React.FC = () => {
                   {/* Primary Save Button */}
                   <button
                     type="button"
-                    onClick={handleSave}
+                    onClick={() => handleSave()}
                     disabled={isSaving || activeDateSubjects.length === 0}
                     style={{
                       display: 'inline-flex',
@@ -1833,6 +1836,18 @@ export const AttendanceGrid: React.FC = () => {
         onMonthChange={(year, monthIndex) => {
           setWorkspaceMonth(year, monthIndex);
         }}
+        onSave={(targetDate) => handleSave(targetDate)}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onMarkHoliday={(dStr, reason) => {
+          markDateAsHoliday(dStr, reason);
+          if (dStr !== activeDate) setActiveDate(dStr);
+        }}
+        onRemoveHoliday={(dStr) => {
+          removeDateHoliday(dStr);
+          if (dStr !== activeDate) setActiveDate(dStr);
+        }}
+        getDayAttendance={(dStr) => editedData[dStr] ?? getDailyAttendance(dStr)}
       />
 
       {/* ── Day Schedule Override Editor Modal ──────────────────────────── */}

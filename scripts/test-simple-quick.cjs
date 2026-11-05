@@ -346,6 +346,82 @@ try {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DIRECTIVES VERIFICATION
+// ─────────────────────────────────────────────────────────────────────────────
+console.log('\n9. Quick Action Directives Verification:');
+
+try {
+  const res = validateQuickCommand('SAVE', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'SAVE');
+  pass('SAVE directive recognized');
+} catch (err) {
+  fail('SAVE directive', err);
+}
+
+try {
+  const res = validateQuickCommand('undo', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'UNDO');
+  pass('UNDO (case-insensitive) directive recognized');
+} catch (err) {
+  fail('UNDO directive', err);
+}
+
+try {
+  const res = validateQuickCommand('REDO', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'REDO');
+  pass('REDO directive recognized');
+} catch (err) {
+  fail('REDO directive', err);
+}
+
+try {
+  const res = validateQuickCommand('STATS', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'STATS');
+  pass('STATS directive recognized');
+} catch (err) {
+  fail('STATS directive', err);
+}
+
+try {
+  const res = validateQuickCommand('CLEAR', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'CLEAR');
+  pass('CLEAR directive recognized');
+} catch (err) {
+  fail('CLEAR directive', err);
+}
+
+try {
+  const res = validateQuickCommand('HOLIDAY:Diwali', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'HOLIDAY');
+  assert.strictEqual(res.directivePayload, 'Diwali');
+  pass('HOLIDAY:Diwali with payload recognized');
+} catch (err) {
+  fail('HOLIDAY:Diwali directive', err);
+}
+
+try {
+  const res = validateQuickCommand('UNHOLIDAY', fullRoster);
+  assert.strictEqual(res.isValid, true);
+  assert.strictEqual(res.isDirective, true);
+  assert.strictEqual(res.directiveType, 'UNHOLIDAY');
+  pass('UNHOLIDAY directive recognized');
+} catch (err) {
+  fail('UNHOLIDAY directive', err);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // SUMMARY
 // ─────────────────────────────────────────────────────────────────────────────
 console.log('\n================================================================');

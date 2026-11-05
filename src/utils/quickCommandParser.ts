@@ -1,35 +1,71 @@
 import type { Person } from '../types';
 
+export type DirectiveType = 'SAVE' | 'UNDO' | 'REDO' | 'HOLIDAY' | 'UNHOLIDAY' | 'STATS' | 'CLEAR';
+
 export interface ValidateCommandResult {
   isValid: boolean;
+  isDirective?: boolean;
+  directiveType?: DirectiveType;
+  directivePayload?: string;
   action?: 'P' | 'A';
   rollNumbers?: string[];
   error?: string;
 }
 
 /**
- * Validates and parses a Simple Quick attendance command string according to strict grammar:
- * P:number[,number...]
- * A:number[,number...]
- * P:start:end[,start:end...]
- * A:start:end[,start:end...]
- * Or mixed: P:100:105,110,115:118
+ * Validates and parses a Simple Quick attendance command string or directive:
+ * Directives:
+ * - SAVE (saves active day attendance)
+ * - UNDO (reverts last action)
+ * - REDO (restores undone action)
+ * - HOLIDAY or HOLIDAY:<reason> (marks target date as holiday)
+ * - UNHOLIDAY (removes holiday status)
+ * - STATS or SUMMARY (shows instant attendance summary breakdown)
+ * - CLEAR (clears current subject marks)
  *
- * Rules:
- * - Must start with uppercase 'P:' or 'A:'
- * - Range syntax: START:END (inclusive, START <= END)
- * - Numbers must contain digits only
- * - No spaces, letters, or extra punctuation
- * - Every student roll number / ID must exist in the provided roster
- * - Duplicate numbers are automatically deduplicated
- * - If anything fails, returns isValid: false with a descriptive error message without partial execution
+ * Attendance Commands:
+ * - P:number[,number...]
+ * - A:number[,number...]
+ * - P:start:end[,start:end...]
+ * - A:start:end[,start:end...]
+ * - Or mixed: P:100:105,110,115:118
  */
 export function validateQuickCommand(commandStr: string, studentRoster: Person[]): ValidateCommandResult {
   if (!commandStr || !commandStr.trim()) {
     return {
       isValid: false,
-      error: 'Command cannot be empty. Example: P:113,144,102',
+      error: 'Command cannot be empty. Example: P:113,144,102 or SAVE',
     };
+  }
+
+  const trimmed = commandStr.trim();
+  const upper = trimmed.toUpperCase();
+
+  // ── Quick Action Directives ───────────────────────────────────────────────
+  if (upper === 'SAVE') {
+    return { isValid: true, isDirective: true, directiveType: 'SAVE' };
+  }
+  if (upper === 'UNDO') {
+    return { isValid: true, isDirective: true, directiveType: 'UNDO' };
+  }
+  if (upper === 'REDO') {
+    return { isValid: true, isDirective: true, directiveType: 'REDO' };
+  }
+  if (upper === 'STATS' || upper === 'SUMMARY') {
+    return { isValid: true, isDirective: true, directiveType: 'STATS' };
+  }
+  if (upper === 'CLEAR' || upper === 'RESET') {
+    return { isValid: true, isDirective: true, directiveType: 'CLEAR' };
+  }
+  if (upper === 'UNHOLIDAY' || upper === 'REMOVE:HOLIDAY' || upper === 'REMOVE_HOLIDAY') {
+    return { isValid: true, isDirective: true, directiveType: 'UNHOLIDAY' };
+  }
+  if (upper === 'HOLIDAY') {
+    return { isValid: true, isDirective: true, directiveType: 'HOLIDAY', directivePayload: 'College Holiday' };
+  }
+  if (upper.startsWith('HOLIDAY:')) {
+    const payload = trimmed.slice(8).trim();
+    return { isValid: true, isDirective: true, directiveType: 'HOLIDAY', directivePayload: payload || 'College Holiday' };
   }
 
   // Strict check: No spaces anywhere

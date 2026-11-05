@@ -5,6 +5,8 @@ import { Button } from '../ui/Button';
 import { Dialog } from '../ui/Dialog';
 import { Badge } from '../ui/Badge';
 import { ThemeToggle } from '../ui/ThemeToggle';
+import { ProfilePanel } from '../collaboration/ProfilePanel';
+import { PresenceBadges } from '../collaboration/PresenceBadges';
 
 export const AppHeader: React.FC = () => {
   const { sessionState, resetFlow } = useFlow();
@@ -36,6 +38,9 @@ export const AppHeader: React.FC = () => {
           </div>
 
           <ThemeToggle />
+
+          <PresenceBadges />
+          <ProfilePanel />
 
           <Button
             variant="ghost"

@@ -7,7 +7,7 @@ export interface CellCursorProps {
   personId: string;
 }
 
-export const useCollaboratorCursor = (
+const useCollaboratorCursor = (
   date: string,
   personId: string
 ): CollaboratorPresence | null => {

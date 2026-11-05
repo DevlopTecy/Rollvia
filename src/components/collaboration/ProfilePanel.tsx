@@ -30,7 +30,8 @@ export const ProfilePanel: React.FC = () => {
   } = collaboration;
 
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'sender' | 'receiver'>('sender');
+  const [userTab, setUserTab] = useState<'sender' | 'receiver' | null>(null);
+  const activeTab = userTab || session?.role || 'sender';
   const [joinCodeInput, setJoinCodeInput] = useState('');
   const [copied, setCopied] = useState(false);
 
@@ -51,13 +52,6 @@ export const ProfilePanel: React.FC = () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [isOpen]);
-
-  // Sync tab with active session role if any
-  useEffect(() => {
-    if (session?.role) {
-      setActiveTab(session.role);
-    }
-  }, [session?.role]);
 
   const handleCopyCode = async () => {
     if (!session?.roomCode) return;
@@ -228,7 +222,7 @@ export const ProfilePanel: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                setActiveTab('sender');
+                setUserTab('sender');
                 clearError();
               }}
               style={{
@@ -249,7 +243,7 @@ export const ProfilePanel: React.FC = () => {
             <button
               type="button"
               onClick={() => {
-                setActiveTab('receiver');
+                setUserTab('receiver');
                 clearError();
               }}
               style={{

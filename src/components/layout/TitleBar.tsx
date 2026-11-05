@@ -4,8 +4,6 @@ import { useFlow, useTheme } from '../../context';
 import attendlyLogo from '../../assets/attendly-logo.png';
 import attendlyLogoDark from '../../assets/attendly-icon-dark.png';
 import attendlyLogoLight from '../../assets/attendly-icon-light.png';
-import { ProfilePanel } from '../collaboration/ProfilePanel';
-import { PresenceBadges } from '../collaboration/PresenceBadges';
 
 export const TitleBar: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -90,11 +88,6 @@ export const TitleBar: React.FC = () => {
             {sessionState.appPhase === 'workspace' ? 'Active' : 'Setup'}
           </span>
         </span>
-      </div>
-
-      <div className="titlebar-actions">
-        <PresenceBadges />
-        <ProfilePanel />
       </div>
 
       <div className="titlebar-window-controls">

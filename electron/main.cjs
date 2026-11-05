@@ -111,10 +111,36 @@ function createWindow() {
     mainWindow?.webContents.send('window-maximize-changed', false);
   });
 
+  mainWindow.on('close', (e) => {
+    if (collabActive && mainWindow) {
+      const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        buttons: ['End Session & Close', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+        title: 'Collaborators Connected',
+        message: 'A live collaboration session is currently active.\nClosing will end the session for all connected collaborators. Are you sure you want to close?',
+      });
+      if (choice === 1) {
+        e.preventDefault();
+      } else {
+        collabActive = false;
+      }
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
+
+let collabActive = false;
+ipcMain.on('collab-active', () => {
+  collabActive = true;
+});
+ipcMain.on('collab-inactive', () => {
+  collabActive = false;
+});
 
 // Window control IPC handlers
 ipcMain.on('window-minimize', () => {

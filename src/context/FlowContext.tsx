@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type {
   StepId,
   AppSessionState,
@@ -24,6 +24,7 @@ import { getWeekdayForDate, getSubjectsForDate } from '../utils/calendar';
 import { storageManager } from '../storage';
 import type { StorageSaveResult } from '../storage';
 import { loadPersistedRoster, savePersistedRoster } from '../utils/rosterStorage';
+import { useCollaboration } from '../collaboration/useCollaboration';
 
 const syncPeopleToMembers = (people: Person[]): Student[] => {
   return people.map((p, index) => ({
@@ -160,6 +161,51 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentStep, setCurrentStep] = useState<StepId>(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const [sessionState, setSessionState] = useState<AppSessionState>(INITIAL_STATE);
+
+  const sessionStateRef = useRef(sessionState);
+  useEffect(() => {
+    sessionStateRef.current = sessionState;
+  }, [sessionState]);
+
+  const collaboration = useCollaboration({
+    getSnapshot: () => {
+      const s = sessionStateRef.current;
+      return {
+        roster: s.people || [],
+        classes: s.classes || [],
+        attendance: (s.savedDailyAttendance || {}) as Record<string, Record<string, Record<string, boolean>>>,
+        noClassDates: s.noClassDates || [],
+        holidayReasons: s.holidayReasons || {},
+        academicYear: s.academicYear || '',
+        departmentName: s.departmentName || '',
+      };
+    },
+    onRemoteStateReceived: (remoteState) => {
+      setSessionState((prev) => {
+        const isReceiver = collaboration.session?.role === 'receiver';
+        const incomingAttendance = remoteState.attendance || {};
+        const newPeople = isReceiver && remoteState.roster ? remoteState.roster : prev.people;
+        const newClasses = isReceiver && remoteState.classes ? remoteState.classes : prev.classes;
+        const newNoClassDates = isReceiver && remoteState.noClassDates ? remoteState.noClassDates : prev.noClassDates;
+        const newHolidayReasons = isReceiver && remoteState.holidayReasons ? remoteState.holidayReasons : prev.holidayReasons;
+
+        return {
+          ...prev,
+          appPhase: isReceiver ? 'workspace' : prev.appPhase,
+          people: newPeople,
+          peopleCount: newPeople.length,
+          members: isReceiver ? syncPeopleToMembers(newPeople) : prev.members,
+          classes: newClasses,
+          noClassDates: newNoClassDates,
+          holidayReasons: newHolidayReasons,
+          savedDailyAttendance: incomingAttendance as any,
+          academicYear: isReceiver && remoteState.academicYear ? remoteState.academicYear : prev.academicYear,
+          departmentName: isReceiver && remoteState.departmentName ? remoteState.departmentName : prev.departmentName,
+        };
+      });
+    },
+  });
+
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus>({
     isAuthenticated: false,
     authType: null,
@@ -816,6 +862,22 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         startDate: dateStr,
       };
     });
+
+    if (collaboration.session) {
+      const service = collaboration.getService();
+      if (service) {
+        Object.entries(personAttendanceMap).forEach(([personId, classMap]) => {
+          Object.entries(classMap).forEach(([classId, value]) => {
+            service.pushAttendanceChange({
+              date: dateStr,
+              personId,
+              classId,
+              value: !!value,
+            }).catch(() => {});
+          });
+        });
+      }
+    }
   };
 
   const getDailyAttendance = (dateStr: string): Record<string, Record<string, boolean>> => {
@@ -1476,6 +1538,9 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         disconnectGoogle,
         setGoogleSpreadsheet,
         createGoogleSpreadsheet,
+
+        // Collaboration
+        collaboration,
 
         currentStepMeta,
       }}

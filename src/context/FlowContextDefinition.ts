@@ -2,6 +2,7 @@ import { createContext } from 'react';
 import type { StepId, StepMeta, AppSessionState, StorageMode, Person, ClassSession, Weekday, WeeklyTimetable, TimetableSubject, WorkspaceTab } from '../types';
 import type { AttendanceDataset, AttendanceRecord } from '../models/attendance';
 import type { StorageSaveResult } from '../storage';
+import type { CollaborationContextValue } from '../collaboration/useCollaboration';
 
 export interface GoogleStatus {
   isAuthenticated: boolean;
@@ -133,6 +134,9 @@ export interface FlowContextType {
   disconnectGoogle: () => Promise<void>;
   setGoogleSpreadsheet: (idOrUrl: string) => Promise<{ success: boolean; title?: string; spreadsheetUrl?: string; error?: string }>;
   createGoogleSpreadsheet: (title?: string) => Promise<{ success: boolean; title?: string; spreadsheetUrl?: string; error?: string }>;
+
+  // === COLLABORATION ===
+  collaboration: CollaborationContextValue;
 
   currentStepMeta: StepMeta;
 }

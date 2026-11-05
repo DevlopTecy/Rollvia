@@ -60,7 +60,6 @@ export class CollaborationService {
     this.myColor = COLOR_PALETTE[0];
     this.myDisplayName = displayName || 'Host';
 
-    const rootRef = ref(this.db, `rooms/${code}`);
     const stateRef = ref(this.db, `rooms/${code}/state`);
     const createdAtRef = ref(this.db, `rooms/${code}/createdAt`);
     const myPresenceRef = ref(this.db, `rooms/${code}/presence/${this.myUid}`);

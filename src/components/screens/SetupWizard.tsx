@@ -691,8 +691,17 @@ export const SetupWizard: React.FC = () => {
             <ThemeToggle />
           </div>
 
-          {/* Tab Bar */}
-          <div style={{ display: 'flex', gap: '0.15rem' }}>
+          {/* Tab Bar (High-End Segmented Stepper) */}
+          <div
+            style={{
+              display: 'inline-flex',
+              gap: '4px',
+              backgroundColor: 'var(--bg-canvas)',
+              padding: '3px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-subtle)',
+            }}
+          >
             {SETUP_TABS.map((tab, i) => {
               const isActive = activeTab === tab.id;
               const isDone = (tab.id === 'storage' && isStorageValid) ||
@@ -706,24 +715,41 @@ export const SetupWizard: React.FC = () => {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.35rem',
-                    padding: '0.45rem 0.875rem',
-                    borderRadius: 'var(--radius-sm) var(--radius-sm) 0 0',
+                    gap: '0.4rem',
+                    padding: '0.4rem 0.9rem',
+                    borderRadius: 'var(--radius-sm)',
                     border: 'none',
-                    borderBottom: isActive ? '2px solid var(--primary-600)' : '2px solid transparent',
-                    backgroundColor: isActive ? 'var(--primary-50)' : 'transparent',
-                    color: isActive ? 'var(--primary-700)' : 'var(--text-muted)',
-                    fontWeight: isActive ? 700 : 500,
+                    backgroundColor: isActive ? 'var(--bg-surface)' : 'transparent',
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                    fontWeight: isActive ? 600 : 500,
                     fontSize: '0.82rem',
                     cursor: 'pointer',
+                    boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                    transition: 'all 0.15s ease',
                   }}
                 >
-                  <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-subtle)' }}>
-                    {i + 1}.
+                  <span
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: '50%',
+                      backgroundColor: isDone
+                        ? 'var(--success-500)'
+                        : isActive
+                        ? 'var(--primary-600)'
+                        : 'var(--border-default)',
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: '0.65rem',
+                      fontWeight: 700,
+                    }}
+                  >
+                    {isDone ? <Check size={10} strokeWidth={2.5} /> : i + 1}
                   </span>
                   {tab.icon}
                   {tab.label}
-                  {isDone && <Check size={12} style={{ color: 'var(--success-500)' }} />}
                 </button>
               );
             })}

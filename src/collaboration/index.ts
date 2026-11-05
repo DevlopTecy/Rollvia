@@ -8,3 +8,4 @@ export type {
   RoomFirebaseState,
 } from './types';
 export type { CollaborationContextValue } from './useCollaboration';
+

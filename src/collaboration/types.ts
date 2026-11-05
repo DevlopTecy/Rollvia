@@ -36,3 +36,4 @@ export interface RoomFirebaseState {
   academicYear: string;
   departmentName: string;
 }
+

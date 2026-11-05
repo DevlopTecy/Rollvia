@@ -4,6 +4,8 @@ import { useFlow, useTheme } from '../../context';
 import attendlyLogo from '../../assets/attendly-logo.png';
 import attendlyLogoDark from '../../assets/attendly-icon-dark.png';
 import attendlyLogoLight from '../../assets/attendly-icon-light.png';
+import { ProfilePanel } from '../collaboration/ProfilePanel';
+import { PresenceBadges } from '../collaboration/PresenceBadges';
 
 export const TitleBar: React.FC = () => {
   const [isMaximized, setIsMaximized] = useState(false);
@@ -72,9 +74,27 @@ export const TitleBar: React.FC = () => {
           <span>Rollvia</span>
         </div>
         <div className="titlebar-divider" />
-        <span className="titlebar-subtitle">
-          {sessionState.institutionName} • {currentStepMeta.title}
+        <span className="titlebar-subtitle" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+          {sessionState.institutionName ? <span>{sessionState.institutionName} •</span> : null}
+          <span>{sessionState.appPhase === 'workspace' ? 'Workspace' : currentStepMeta.title}</span>
+          <span
+            style={{
+              fontSize: '10px',
+              padding: '1px 6px',
+              borderRadius: '4px',
+              backgroundColor: sessionState.appPhase === 'workspace' ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-surface-subtle)',
+              color: sessionState.appPhase === 'workspace' ? 'var(--success-600)' : 'var(--text-muted)',
+              fontWeight: 600,
+            }}
+          >
+            {sessionState.appPhase === 'workspace' ? 'Active' : 'Setup'}
+          </span>
         </span>
+      </div>
+
+      <div className="titlebar-actions">
+        <PresenceBadges />
+        <ProfilePanel />
       </div>
 
       <div className="titlebar-window-controls">

@@ -289,7 +289,17 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
         </button>
 
         {/* Tab Navigation */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: '0.1rem' }}>
+        <nav
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+            backgroundColor: 'var(--bg-canvas)',
+            padding: '2px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-subtle)',
+          }}
+        >
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -300,16 +310,17 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '0.35rem',
-                  padding: '0.35rem 0.75rem',
+                  gap: '0.4rem',
+                  padding: '0.3rem 0.75rem',
                   borderRadius: 'var(--radius-sm)',
                   border: 'none',
-                  backgroundColor: isActive ? 'var(--primary-50)' : 'transparent',
-                  color: isActive ? 'var(--primary-700)' : 'var(--text-muted)',
+                  backgroundColor: isActive ? 'var(--bg-surface)' : 'transparent',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
                   fontWeight: isActive ? 600 : 500,
                   fontSize: '0.82rem',
                   cursor: 'pointer',
-                  transition: 'all 0.1s ease',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isActive ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                 }}
               >
                 {tab.icon}

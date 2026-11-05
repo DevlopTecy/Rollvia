@@ -1432,6 +1432,7 @@ export const AttendanceGrid: React.FC = () => {
 
                     {/* Subject Cells with explicit P and A buttons */}
                     {activeDateSubjects.map((sub) => {
+                      const hasRecord = personData[sub.id] !== undefined || personData[sub.name] !== undefined;
                       const isPresent = Boolean(personData[sub.id] ?? personData[sub.name]);
                       return (
                         <td
@@ -1441,9 +1442,11 @@ export const AttendanceGrid: React.FC = () => {
                             textAlign: 'center',
                             padding: '4px 6px',
                             borderRight: '1px solid var(--border-subtle)',
-                            backgroundColor: isPresent
-                              ? 'rgba(16, 185, 129, 0.04)'
-                              : 'rgba(239, 68, 68, 0.03)',
+                            backgroundColor: !hasRecord
+                              ? 'transparent'
+                              : isPresent
+                              ? 'rgba(16, 185, 129, 0.05)'
+                              : 'rgba(239, 68, 68, 0.04)',
                           }}
                         >
                           <div
@@ -1458,21 +1461,22 @@ export const AttendanceGrid: React.FC = () => {
                               type="button"
                               onClick={() => setCellStatus(person.id, sub.id, sub.name, true)}
                               style={{
-                                padding: '2px 7px',
+                                padding: '3px 8px',
                                 fontSize: '0.75rem',
-                                fontWeight: isPresent ? 700 : 500,
+                                fontWeight: hasRecord && isPresent ? 700 : 500,
                                 borderRadius: 'var(--radius-xs)',
                                 cursor: 'pointer',
-                                border: isPresent
+                                border: hasRecord && isPresent
                                   ? '1px solid var(--success-600)'
                                   : '1px solid var(--border-default)',
-                                backgroundColor: isPresent
+                                backgroundColor: hasRecord && isPresent
                                   ? 'var(--success-600)'
                                   : 'var(--bg-surface)',
-                                color: isPresent ? '#ffffff' : 'var(--text-muted)',
-                                transition: 'all 0.1s ease',
-                                minWidth: '24px',
+                                color: hasRecord && isPresent ? '#ffffff' : 'var(--text-muted)',
+                                transition: 'all 0.12s ease',
+                                minWidth: '26px',
                                 lineHeight: '1.2',
+                                boxShadow: hasRecord && isPresent ? '0 1px 3px rgba(16,185,129,0.3)' : 'none',
                               }}
                               title={`Mark ${person.name} Present for ${sub.name}`}
                             >
@@ -1482,21 +1486,22 @@ export const AttendanceGrid: React.FC = () => {
                               type="button"
                               onClick={() => setCellStatus(person.id, sub.id, sub.name, false)}
                               style={{
-                                padding: '2px 7px',
+                                padding: '3px 8px',
                                 fontSize: '0.75rem',
-                                fontWeight: !isPresent ? 700 : 500,
+                                fontWeight: hasRecord && !isPresent ? 700 : 500,
                                 borderRadius: 'var(--radius-xs)',
                                 cursor: 'pointer',
-                                border: !isPresent
+                                border: hasRecord && !isPresent
                                   ? '1px solid var(--danger-600)'
                                   : '1px solid var(--border-default)',
-                                backgroundColor: !isPresent
+                                backgroundColor: hasRecord && !isPresent
                                   ? 'var(--danger-600)'
                                   : 'var(--bg-surface)',
-                                color: !isPresent ? '#ffffff' : 'var(--text-muted)',
-                                transition: 'all 0.1s ease',
-                                minWidth: '24px',
+                                color: hasRecord && !isPresent ? '#ffffff' : 'var(--text-muted)',
+                                transition: 'all 0.12s ease',
+                                minWidth: '26px',
                                 lineHeight: '1.2',
+                                boxShadow: hasRecord && !isPresent ? '0 1px 3px rgba(239,68,68,0.3)' : 'none',
                               }}
                               title={`Mark ${person.name} Absent for ${sub.name}`}
                             >
@@ -1514,13 +1519,14 @@ export const AttendanceGrid: React.FC = () => {
             {/* Footer Summary Row with Attendance Thresholds */}
             <tfoot
               style={{
-                backgroundColor: 'var(--bg-canvas)',
+                backgroundColor: 'var(--bg-surface)',
                 position: 'sticky',
                 bottom: 0,
                 zIndex: 5,
+                boxShadow: '0 -2px 8px rgba(0,0,0,0.04)',
               }}
             >
-              <tr style={{ borderTop: '2px solid var(--border-default)' }}>
+              <tr style={{ borderTop: '1px solid var(--border-default)' }}>
                 <td colSpan={3} style={{ ...tdStyle, fontWeight: 700, color: 'var(--text-secondary)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <span>Total Present</span>
@@ -1875,37 +1881,40 @@ const navBtnStyle: React.CSSProperties = {
 };
 
 const thStyle: React.CSSProperties = {
-  padding: '0.5rem 0.6rem',
-  fontWeight: 700,
-  fontSize: '0.75rem',
-  color: 'var(--text-secondary)',
+  padding: '0.65rem 0.75rem',
+  fontWeight: 600,
+  fontSize: '0.72rem',
+  color: 'var(--text-muted)',
   textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-  borderBottom: '2px solid var(--border-default)',
+  letterSpacing: '0.04em',
+  borderBottom: '1px solid var(--border-default)',
   textAlign: 'center',
   whiteSpace: 'nowrap',
+  backgroundColor: 'var(--bg-canvas)',
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: '0.45rem 0.6rem',
+  padding: '0.5rem 0.75rem',
   color: 'var(--text-primary)',
   verticalAlign: 'middle',
   whiteSpace: 'nowrap',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
+  fontSize: '0.82rem',
 };
 
 function quickFillBtnStyle(variant: 'success' | 'danger'): React.CSSProperties {
   const isSuccess = variant === 'success';
   return {
-    backgroundColor: isSuccess ? 'var(--success-50)' : 'var(--danger-50)',
-    border: `1px solid ${isSuccess ? 'var(--success-500)' : 'var(--danger-500)'}`,
-    color: isSuccess ? 'var(--success-text)' : 'var(--danger-text)',
+    backgroundColor: isSuccess ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+    border: `1px solid ${isSuccess ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+    color: isSuccess ? 'var(--success-600)' : 'var(--danger-600)',
     borderRadius: 'var(--radius-xs)',
-    padding: '0.28rem 0.6rem',
+    padding: '0.25rem 0.65rem',
     fontSize: '0.73rem',
     fontWeight: 600,
     cursor: 'pointer',
+    transition: 'all 0.12s ease',
   };
 }
 
@@ -1913,15 +1922,17 @@ function actionPillBtnStyle(active: boolean): React.CSSProperties {
   return {
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '0.25rem',
-    backgroundColor: 'var(--bg-canvas)',
+    gap: '0.35rem',
+    backgroundColor: 'var(--bg-surface)',
     border: '1px solid var(--border-default)',
     borderRadius: 'var(--radius-xs)',
-    color: active ? 'var(--text-primary)' : 'var(--text-subtle)',
-    padding: '0.28rem 0.55rem',
-    fontSize: '0.73rem',
+    color: active ? 'var(--text-primary)' : 'var(--text-muted)',
+    padding: '0.28rem 0.65rem',
+    fontSize: '0.75rem',
     fontWeight: 500,
     cursor: active ? 'pointer' : 'not-allowed',
-    opacity: active ? 1 : 0.5,
+    opacity: active ? 1 : 0.45,
+    boxShadow: active ? '0 1px 2px rgba(0,0,0,0.03)' : 'none',
+    transition: 'all 0.12s ease',
   };
 }

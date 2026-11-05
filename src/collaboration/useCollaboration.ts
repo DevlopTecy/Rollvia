@@ -204,3 +204,4 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
 };
 
 export type CollaborationContextValue = ReturnType<typeof useCollaboration>;
+

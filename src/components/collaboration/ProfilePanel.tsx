@@ -105,22 +105,34 @@ export const ProfilePanel: React.FC = () => {
           setIsOpen((prev) => !prev);
           clearError();
         }}
-        title={session ? `Live Room: ${session.roomCode} (${session.role})` : 'Live Collaboration'}
+        title={session ? `Live Room: ${session.roomCode} (${session.role})` : 'Profile & Live Collaboration'}
+        aria-label="Profile and Live Collaboration"
         style={{
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          padding: '4px 8px',
+          padding: '2px 8px 2px 4px',
           borderRadius: 'var(--radius-full, 9999px)',
           border: session
-            ? '2px solid var(--success-500, #10b981)'
+            ? '1.5px solid var(--success-500, #10b981)'
             : '1px solid var(--border-default)',
-          backgroundColor: session ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-surface)',
+          backgroundColor: session ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-surface)',
           color: 'var(--text-primary)',
           cursor: 'pointer',
           transition: 'all 0.15s ease',
-          fontSize: 'var(--text-xs)',
+          fontSize: '11px',
           fontWeight: 600,
+          boxShadow: 'var(--shadow-xs, 0 1px 2px rgba(0,0,0,0.05))',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.backgroundColor = session
+            ? 'rgba(16, 185, 129, 0.18)'
+            : 'var(--bg-surface-hover)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.backgroundColor = session
+            ? 'rgba(16, 185, 129, 0.12)'
+            : 'var(--bg-surface)';
         }}
       >
         <div
@@ -133,11 +145,13 @@ export const ProfilePanel: React.FC = () => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 11,
+            fontSize: 10,
             fontWeight: 700,
+            flexShrink: 0,
+            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
           }}
         >
-          {initialChar || <User size={12} />}
+          {initialChar || <User size={12} strokeWidth={2.2} />}
         </div>
 
         {session ? (
@@ -148,13 +162,16 @@ export const ProfilePanel: React.FC = () => {
               gap: 4,
               color: 'var(--success-600, #059669)',
               letterSpacing: 0.5,
+              fontSize: '11px',
             }}
           >
-            <Radio size={12} className="animate-pulse" />
+            <Radio size={11} className="animate-pulse" />
             LIVE {session.roomCode}
           </span>
         ) : (
-          <span style={{ color: 'var(--text-secondary)' }}>Connect</span>
+          <span style={{ color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 600 }}>
+            {connectionName.trim() ? connectionName.trim() : 'Profile'}
+          </span>
         )}
       </button>
 
@@ -166,11 +183,11 @@ export const ProfilePanel: React.FC = () => {
             top: 'calc(100% + 8px)',
             right: 0,
             width: 320,
-            backgroundColor: 'var(--bg-elevated, #ffffff)',
+            backgroundColor: 'var(--bg-surface)',
             border: '1px solid var(--border-default)',
             borderRadius: 'var(--radius-md, 8px)',
-            boxShadow: '0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1)',
-            zIndex: 1000,
+            boxShadow: '0 12px 32px -4px rgba(0,0,0,0.22), 0 4px 12px -2px rgba(0,0,0,0.1)',
+            zIndex: 2500,
             padding: 16,
             display: 'flex',
             flexDirection: 'column',

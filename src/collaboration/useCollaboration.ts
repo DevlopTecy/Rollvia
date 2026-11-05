@@ -53,7 +53,6 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
 
   const createRoom = useCallback(
     async (customSnapshot?: RoomFirebaseState): Promise<string> => {
-      setIsConnecting(true);
       setError(null);
       try {
         const service = getService();
@@ -63,34 +62,40 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
         }
 
         const name = connectionName.trim() || 'Host';
-        const roomCode = await service.createRoom(name, snapshot);
 
-        const newSession: CollaborationSession = {
-          roomCode,
-          role: 'sender',
-          myUid: service.myUid,
-          myColor: service.myColor,
-          myDisplayName: name,
-        };
+        // 1. Instantly allocate room code and set session in 0ms so sender sees code immediately!
+        const { code, session: newSession } = service.prepareRoom(name);
         setSession(newSession);
 
-        // Listen for collaborators presence
-        service.subscribePresence((presence) => {
-          setCollaborators(presence);
-        });
+        // 2. Publish initial room snapshot to Firebase in parallel
+        setIsConnecting(true);
+        try {
+          await service.publishRoom(code, name, snapshot);
 
-        // Listen for state changes (e.g. from receivers)
-        service.subscribeState((remoteState) => {
-          options?.onRemoteStateReceived?.(remoteState);
-        });
+          // Listen for collaborators presence
+          service.subscribePresence((presence) => {
+            setCollaborators(presence);
+          });
 
-        return roomCode;
+          // Listen for state changes (e.g. from receivers)
+          service.subscribeState((remoteState) => {
+            options?.onRemoteStateReceived?.(remoteState);
+          });
+        } catch (publishErr: unknown) {
+          const msg = publishErr instanceof Error ? publishErr.message : 'Failed to publish room.';
+          setError(msg);
+          // Rollback local session if publish failed
+          setSession(null);
+          await service.leaveRoom();
+          throw publishErr;
+        } finally {
+          setIsConnecting(false);
+        }
+
+        return code;
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to create room.';
-        setError(msg);
-        throw err;
-      } finally {
         setIsConnecting(false);
+        throw err;
       }
     },
     [connectionName, getService, options]

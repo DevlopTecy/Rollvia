@@ -14,7 +14,7 @@ import { useFlow } from '../../context';
 import { MONTH_NAMES } from '../../utils/calendar';
 import { calculateStudentAttendanceProfile } from '../../models/attendance';
 import type { StudentAttendanceProfile } from '../../types';
-import { downloadMonthlyAttendancePdf } from '../../utils/pdfExport';
+import { downloadMonthlyAttendancePdf, type ExportTheme } from '../../utils/pdfExport';
 import { downloadAttendanceExcel } from '../../utils/attendanceExcelExport';
 import {
   computeMonthlyAttendanceMatrix,
@@ -22,6 +22,13 @@ import {
 } from '../../utils/monthlyAttendanceSummary';
 import { downloadMonthlySummaryExcel } from '../../utils/monthlySummaryExcelExport';
 import { downloadMonthlySummaryPdf } from '../../utils/monthlySummaryPdfExport';
+
+const EXPORT_THEMES: { id: ExportTheme; label: string; icon: string; desc: string }[] = [
+  { id: 'default', label: 'Clean Table (Default)', icon: '📋', desc: 'Minimalist table with names & attendance' },
+  { id: 'modern', label: 'Modern Slate', icon: '🎨', desc: 'Contemporary header with metric chips' },
+  { id: 'academic', label: 'Academic Formal', icon: '🏛️', desc: 'University title & verification signatures' },
+  { id: 'emerald', label: 'Emerald Pro', icon: '🌿', desc: 'High-contrast executive green palette' },
+];
 
 interface ExportMenuProps {
   onOpenMonthlySummary?: () => void;
@@ -48,6 +55,27 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
   const [isOpen, setIsOpen] = useState(false);
   const [activeExport, setActiveExport] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ message: string; isError: boolean } | null>(null);
+
+  const [exportTheme, setExportTheme] = useState<ExportTheme>(() => {
+    try {
+      const saved = localStorage.getItem('rollvia_export_theme') as ExportTheme;
+      if (saved && ['default', 'modern', 'academic', 'emerald'].includes(saved)) {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'default';
+  });
+
+  const handleSelectTheme = (t: ExportTheme) => {
+    setExportTheme(t);
+    try {
+      localStorage.setItem('rollvia_export_theme', t);
+    } catch {
+      // ignore
+    }
+  };
 
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -131,6 +159,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
         profiles: profilesMap,
         savedDatesCount: (sessionState.savedDates || []).length,
         holidaysCount: (noClassDates || []).length,
+        theme: exportTheme,
       });
 
       showFeedback('Attendance PDF exported successfully', false);
@@ -220,6 +249,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
         institutionName,
         departmentName,
         academicYear: academicYear || String(activeYr),
+        theme: exportTheme,
       });
 
       showFeedback('Monthly Summary PDF exported successfully', false);
@@ -337,18 +367,90 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
             animation: 'fadeIn 0.12s ease-out',
           }}
         >
-          {/* Menu Title */}
+          {/* Header & Theme Section */}
           <div
             style={{
-              padding: '0.35rem 0.85rem 0.3rem',
-              fontSize: '0.67rem',
-              fontWeight: 700,
-              letterSpacing: '0.06em',
-              color: 'var(--text-muted, #64748b)',
-              textTransform: 'uppercase',
+              padding: '0.35rem 0.85rem 0.35rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
             }}
           >
-            Export
+            <span
+              style={{
+                fontSize: '0.67rem',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                color: 'var(--text-muted, #64748b)',
+                textTransform: 'uppercase',
+              }}
+            >
+              Export
+            </span>
+            <span
+              style={{
+                fontSize: '0.65rem',
+                color: 'var(--primary-600, #4f46e5)',
+                fontWeight: 600,
+              }}
+            >
+              Theme: {EXPORT_THEMES.find((t) => t.id === exportTheme)?.label.split(' ')[0]}
+            </span>
+          </div>
+
+          {/* Theme Selector Grid */}
+          <div
+            style={{
+              margin: '0 0.5rem 0.4rem',
+              padding: '0.45rem',
+              backgroundColor: 'var(--bg-canvas, #f8fafc)',
+              borderRadius: 'var(--radius-sm, 6px)',
+              border: '1px solid var(--border-subtle, #e2e8f0)',
+            }}
+          >
+            <div style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
+              Select Layout Theme:
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.3rem' }}>
+              {EXPORT_THEMES.map((t) => {
+                const isSelected = exportTheme === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => handleSelectTheme(t.id)}
+                    title={t.desc}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      padding: '0.28rem 0.45rem',
+                      borderRadius: 'var(--radius-xs, 4px)',
+                      border: isSelected
+                        ? '1.5px solid var(--primary-600, #4f46e5)'
+                        : '1px solid var(--border-default, #cbd5e1)',
+                      backgroundColor: isSelected
+                        ? 'var(--bg-surface, #ffffff)'
+                        : 'transparent',
+                      color: isSelected
+                        ? 'var(--primary-700, #1d4ed8)'
+                        : 'var(--text-secondary, #475569)',
+                      fontSize: '0.69rem',
+                      fontWeight: isSelected ? 700 : 500,
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      boxShadow: isSelected ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                      transition: 'all 0.12s ease',
+                    }}
+                  >
+                    <span style={{ fontSize: '11px', flexShrink: 0 }}>{t.icon}</span>
+                    <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {t.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div style={{ height: '1px', backgroundColor: 'var(--border-subtle, #e2e8f0)', margin: '0.2rem 0 0.35rem' }} />

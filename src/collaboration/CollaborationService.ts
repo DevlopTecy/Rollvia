@@ -4,6 +4,8 @@ import {
   ref,
   set,
   get,
+  update,
+  goOnline,
   onValue,
   onDisconnect,
   type Database,
@@ -13,6 +15,7 @@ import firebaseConfig from './firebaseConfig';
 import type {
   UserRole,
   CollaboratorPresence,
+  CollaborationSession,
   RoomAttendanceUpdate,
   RoomFirebaseState,
 } from './types';
@@ -39,6 +42,12 @@ export class CollaborationService {
   constructor() {
     this.app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     this.db = getDatabase(this.app);
+    // Pre-warm the WebSocket connection to asia-southeast1
+    try {
+      goOnline(this.db);
+    } catch {
+      // ignore
+    }
     this.myUid = `user_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   }
 
@@ -51,21 +60,43 @@ export class CollaborationService {
     return code;
   }
 
-  public async createRoom(displayName: string, initialState: RoomFirebaseState): Promise<string> {
-    await this.leaveRoom();
-
+  /**
+   * Instantly allocates a room code and local session object in 0ms (optimistic).
+   */
+  public prepareRoom(displayName: string): { code: string; session: CollaborationSession } {
     const code = this.generateRoomCode();
     this.roomCode = code;
     this.role = 'sender';
     this.myColor = COLOR_PALETTE[0];
     this.myDisplayName = displayName || 'Host';
 
-    const stateRef = ref(this.db, `rooms/${code}/state`);
-    const createdAtRef = ref(this.db, `rooms/${code}/createdAt`);
-    const myPresenceRef = ref(this.db, `rooms/${code}/presence/${this.myUid}`);
+    return {
+      code,
+      session: {
+        roomCode: code,
+        role: 'sender',
+        myUid: this.myUid,
+        myColor: this.myColor,
+        myDisplayName: this.myDisplayName,
+      },
+    };
+  }
 
-    await set(stateRef, initialState);
-    await set(createdAtRef, Date.now());
+  /**
+   * Performs an atomic multi-path update to Firebase Realtime Database.
+   */
+  public async publishRoom(
+    code: string,
+    displayName: string,
+    initialState: RoomFirebaseState
+  ): Promise<void> {
+    this.roomCode = code;
+    this.role = 'sender';
+    this.myColor = COLOR_PALETTE[0];
+    this.myDisplayName = displayName || 'Host';
+
+    const rootRef = ref(this.db);
+    const myPresenceRef = ref(this.db, `rooms/${code}/presence/${this.myUid}`);
 
     const presenceData: CollaboratorPresence = {
       displayName: this.myDisplayName,
@@ -74,9 +105,23 @@ export class CollaborationService {
       joinedAt: Date.now(),
     };
 
-    await set(myPresenceRef, presenceData);
-    await onDisconnect(myPresenceRef).remove();
+    const updates: Record<string, unknown> = {
+      [`rooms/${code}/state`]: initialState,
+      [`rooms/${code}/createdAt`]: Date.now(),
+      [`rooms/${code}/presence/${this.myUid}`]: presenceData,
+    };
 
+    // Parallel atomic write and onDisconnect registration
+    await Promise.all([
+      update(rootRef, updates),
+      onDisconnect(myPresenceRef).remove(),
+    ]);
+  }
+
+  public async createRoom(displayName: string, initialState: RoomFirebaseState): Promise<string> {
+    await this.leaveRoom();
+    const { code } = this.prepareRoom(displayName);
+    await this.publishRoom(code, displayName, initialState);
     return code;
   }
 

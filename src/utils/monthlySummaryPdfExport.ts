@@ -1,4 +1,5 @@
 import type { MonthlyAttendanceMatrix } from './monthlyAttendanceSummary';
+import type { ExportTheme } from './pdfExport';
 
 /**
  * Escapes text for PDF literal strings (parentheses, backslashes).
@@ -27,6 +28,7 @@ export interface MonthlySummaryPdfOptions {
   institutionName?: string;
   departmentName?: string;
   academicYear?: string;
+  theme?: ExportTheme;
 }
 
 interface HorizontalChunk {
@@ -46,6 +48,7 @@ export function generateMonthlySummaryPdfBuffer(
     institutionName = 'Rollvia Academic Institute',
     departmentName = 'Department of Computer Science & Engineering',
     academicYear = matrix.academicYear || String(matrix.selectedYear),
+    theme = 'default',
   } = options;
 
   const pageW = 842; // A4 Landscape width (pt)
@@ -166,9 +169,9 @@ export function generateMonthlySummaryPdfBuffer(
         streamOps.push(`${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} re f`);
       };
 
-      const strokeLine = (x1: number, y1: number, x2: number, y2: number, r = 0.82, g = 0.84, b = 0.88) => {
+      const strokeLine = (x1: number, y1: number, x2: number, y2: number, r = 0.82, g = 0.84, b = 0.88, w = 0.5) => {
         streamOps.push(`${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} RG`);
-        streamOps.push(`0.5 w`);
+        streamOps.push(`${w} w`);
         streamOps.push(`${x1.toFixed(1)} ${y1.toFixed(1)} m ${x2.toFixed(1)} ${y2.toFixed(1)} l S`);
       };
 
@@ -194,36 +197,100 @@ export function generateMonthlySummaryPdfBuffer(
 
       // Header Banner
       const bannerTop = pageH - 28;
+      const isDefaultTheme = theme === 'default';
+      const isAcademicTheme = theme === 'academic';
+      const isEmeraldTheme = theme === 'emerald';
+
       if (isFirstVertPage) {
-        fillRect(leftMargin, bannerTop - 36, printableW, 36, 0.96, 0.97, 0.99);
-        strokeLine(leftMargin, bannerTop - 36, leftMargin + printableW, bannerTop - 36, 0.85, 0.88, 0.92);
-
-        drawText('Rollvia - Monthly Attendance Summary', leftMargin + 10, bannerTop - 18, 12, true, 0.08, 0.18, 0.38);
-        drawText(
-          `${institutionName} \u2022 ${departmentName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
-          leftMargin + 10,
-          bannerTop - 30,
-          8,
-          false,
-          0.38,
-          0.42,
-          0.48
-        );
+        if (isDefaultTheme) {
+          // Default clean header (no filled color background)
+          strokeLine(leftMargin, bannerTop - 34, leftMargin + printableW, bannerTop - 34, 0.7, 0.7, 0.7, 1);
+          drawText('ROLLVIA - MONTHLY ATTENDANCE SUMMARY', leftMargin + 8, bannerTop - 16, 12, true, 0.08, 0.08, 0.08);
+          drawText(
+            `${institutionName} \u2022 ${departmentName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
+            leftMargin + 8,
+            bannerTop - 28,
+            8,
+            false,
+            0.35,
+            0.35,
+            0.35
+          );
+        } else if (isAcademicTheme) {
+          // Academic formal centered header
+          strokeLine(leftMargin, bannerTop - 34, leftMargin + printableW, bannerTop - 34, 0.25, 0.25, 0.25, 1.2);
+          strokeLine(leftMargin, bannerTop - 36, leftMargin + printableW, bannerTop - 36, 0.25, 0.25, 0.25, 0.5);
+          drawText(institutionName.toUpperCase(), pageW / 2 - 120, bannerTop - 12, 10, true, 0.05, 0.05, 0.05);
+          drawText(
+            `MONTHLY ATTENDANCE STATEMENT \u2022 ${departmentName.toUpperCase()} (${academicYear})`,
+            pageW / 2 - 140,
+            bannerTop - 25,
+            8,
+            false,
+            0.2,
+            0.2,
+            0.2
+          );
+        } else if (isEmeraldTheme) {
+          // Executive Emerald Header
+          fillRect(leftMargin, bannerTop - 36, printableW, 36, 0.06, 0.36, 0.22);
+          strokeLine(leftMargin, bannerTop - 36, leftMargin + printableW, bannerTop - 36, 0.04, 0.28, 0.16);
+          drawText('Rollvia - Monthly Attendance Summary', leftMargin + 10, bannerTop - 18, 12, true, 1.0, 1.0, 1.0);
+          drawText(
+            `${institutionName} \u2022 ${departmentName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
+            leftMargin + 10,
+            bannerTop - 30,
+            8,
+            false,
+            0.85,
+            0.95,
+            0.88
+          );
+        } else {
+          // Modern Slate / Blue Header
+          fillRect(leftMargin, bannerTop - 36, printableW, 36, 0.96, 0.97, 0.99);
+          strokeLine(leftMargin, bannerTop - 36, leftMargin + printableW, bannerTop - 36, 0.85, 0.88, 0.92);
+          drawText('Rollvia - Monthly Attendance Summary', leftMargin + 10, bannerTop - 18, 12, true, 0.08, 0.18, 0.38);
+          drawText(
+            `${institutionName} \u2022 ${departmentName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
+            leftMargin + 10,
+            bannerTop - 30,
+            8,
+            false,
+            0.38,
+            0.42,
+            0.48
+          );
+        }
       } else {
-        fillRect(leftMargin, bannerTop - 26, printableW, 26, 0.96, 0.97, 0.99);
-        strokeLine(leftMargin, bannerTop - 26, leftMargin + printableW, bannerTop - 26, 0.85, 0.88, 0.92);
-
-        drawText('Rollvia - Monthly Attendance Summary (Continued)', leftMargin + 10, bannerTop - 17, 10, true, 0.08, 0.18, 0.38);
-        drawText(
-          `${institutionName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
-          leftMargin + 290,
-          bannerTop - 17,
-          8,
-          false,
-          0.38,
-          0.42,
-          0.48
-        );
+        if (isDefaultTheme || isAcademicTheme) {
+          strokeLine(leftMargin, bannerTop - 26, leftMargin + printableW, bannerTop - 26, 0.75, 0.75, 0.75, 0.8);
+          drawText('Rollvia - Monthly Attendance Summary (Continued)', leftMargin + 8, bannerTop - 16, 10, true, 0.1, 0.1, 0.1);
+          drawText(
+            `${institutionName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
+            leftMargin + 290,
+            bannerTop - 16,
+            8,
+            false,
+            0.35,
+            0.35,
+            0.35
+          );
+        } else {
+          fillRect(leftMargin, bannerTop - 26, printableW, 26, 0.96, 0.97, 0.99);
+          strokeLine(leftMargin, bannerTop - 26, leftMargin + printableW, bannerTop - 26, 0.85, 0.88, 0.92);
+          drawText('Rollvia - Monthly Attendance Summary (Continued)', leftMargin + 10, bannerTop - 17, 10, true, 0.08, 0.18, 0.38);
+          drawText(
+            `${institutionName} \u2022 Academic Year: ${academicYear} \u2022 ${matrix.monthRangeLabel}`,
+            leftMargin + 290,
+            bannerTop - 17,
+            8,
+            false,
+            0.38,
+            0.42,
+            0.48
+          );
+        }
       }
 
       // Page X of Y top-right
@@ -316,12 +383,16 @@ export function generateMonthlySummaryPdfBuffer(
         const y = rowStartY - (pageRowIdx + 1) * rowHeight;
         const isEven = globalRowIdx % 2 === 0;
 
-        if (isEven) {
+        if (isDefaultTheme) {
+          fillRect(leftMargin, y, printableW, rowHeight, 1.0, 1.0, 1.0);
+          strokeLine(leftMargin, y, leftMargin + printableW, y, 0.82, 0.82, 0.82);
+        } else if (isEven) {
           fillRect(leftMargin, y, printableW, rowHeight, 0.99, 0.99, 1.0);
+          strokeLine(leftMargin, y, leftMargin + printableW, y, 0.88, 0.9, 0.93);
         } else {
           fillRect(leftMargin, y, printableW, rowHeight, 0.96, 0.97, 0.985);
+          strokeLine(leftMargin, y, leftMargin + printableW, y, 0.88, 0.9, 0.93);
         }
-        strokeLine(leftMargin, y, leftMargin + printableW, y, 0.88, 0.9, 0.93);
 
         // Fixed columns
         drawText(String(globalRowIdx + 1), leftMargin + 6, y + 4.5, 6.8, false, 0.45, 0.5, 0.55);
@@ -487,7 +558,8 @@ export function downloadMonthlySummaryPdf(
   link.href = url;
   const safeYear = matrix.selectedYear || new Date().getFullYear();
   const safeRange = matrix.monthRangeLabel.replace(/[\s–—]+/g, '_');
-  link.download = `Rollvia_Monthly_Attendance_Summary_${safeYear}_${safeRange}.pdf`;
+  const themeSuffix = options.theme ? `_${options.theme}` : '';
+  link.download = `Rollvia_Monthly_Attendance_Summary_${safeYear}_${safeRange}${themeSuffix}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

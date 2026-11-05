@@ -24,6 +24,8 @@ function getPctColor(pct: number): [number, number, number] {
   return [0.75, 0.2, 0.2];                   // red
 }
 
+export type ExportTheme = 'default' | 'modern' | 'academic' | 'emerald';
+
 export interface MonthlyPdfData {
   institutionName?: string;
   departmentName?: string;
@@ -33,7 +35,102 @@ export interface MonthlyPdfData {
   profiles: Map<string, StudentAttendanceProfile> | Record<string, StudentAttendanceProfile>;
   savedDatesCount: number;
   holidaysCount: number;
+  theme?: ExportTheme;
 }
+
+interface ThemeConfig {
+  headerBg: [number, number, number] | null;
+  headerBorder: [number, number, number];
+  titleColor: [number, number, number];
+  subColor: [number, number, number];
+  showStatsBox: boolean;
+  statsBg: [number, number, number];
+  tableHeaderBg: [number, number, number];
+  tableHeaderBorder: [number, number, number];
+  tableHeaderColor: [number, number, number];
+  evenRowBg: [number, number, number];
+  oddRowBg: [number, number, number];
+  rowBorder: [number, number, number];
+  colDividers: boolean;
+  boxBorder: boolean;
+  colorPct: boolean;
+  showSignatureLines: boolean;
+}
+
+const THEME_CONFIGS: Record<ExportTheme, ThemeConfig> = {
+  default: {
+    headerBg: null,
+    headerBorder: [0.75, 0.75, 0.75],
+    titleColor: [0.08, 0.08, 0.08],
+    subColor: [0.32, 0.32, 0.32],
+    showStatsBox: false,
+    statsBg: [1, 1, 1],
+    tableHeaderBg: [0.94, 0.94, 0.94],
+    tableHeaderBorder: [0.25, 0.25, 0.25],
+    tableHeaderColor: [0.06, 0.06, 0.06],
+    evenRowBg: [1.0, 1.0, 1.0],
+    oddRowBg: [0.985, 0.985, 0.985],
+    rowBorder: [0.82, 0.82, 0.82],
+    colDividers: true,
+    boxBorder: true,
+    colorPct: false,
+    showSignatureLines: false,
+  },
+  modern: {
+    headerBg: [0.95, 0.96, 0.98],
+    headerBorder: [0.85, 0.88, 0.92],
+    titleColor: [0.08, 0.15, 0.3],
+    subColor: [0.35, 0.4, 0.48],
+    showStatsBox: true,
+    statsBg: [0.98, 0.98, 0.99],
+    tableHeaderBg: [0.92, 0.94, 0.97],
+    tableHeaderBorder: [0.8, 0.82, 0.86],
+    tableHeaderColor: [0.2, 0.25, 0.35],
+    evenRowBg: [0.99, 0.99, 1.0],
+    oddRowBg: [0.96, 0.97, 0.98],
+    rowBorder: [0.9, 0.92, 0.94],
+    colDividers: false,
+    boxBorder: false,
+    colorPct: true,
+    showSignatureLines: false,
+  },
+  academic: {
+    headerBg: null,
+    headerBorder: [0.2, 0.2, 0.2],
+    titleColor: [0.04, 0.04, 0.04],
+    subColor: [0.15, 0.15, 0.15],
+    showStatsBox: false,
+    statsBg: [1, 1, 1],
+    tableHeaderBg: [0.88, 0.88, 0.88],
+    tableHeaderBorder: [0.18, 0.18, 0.18],
+    tableHeaderColor: [0.04, 0.04, 0.04],
+    evenRowBg: [1.0, 1.0, 1.0],
+    oddRowBg: [0.965, 0.965, 0.965],
+    rowBorder: [0.75, 0.75, 0.75],
+    colDividers: true,
+    boxBorder: true,
+    colorPct: false,
+    showSignatureLines: true,
+  },
+  emerald: {
+    headerBg: [0.06, 0.36, 0.22],
+    headerBorder: [0.04, 0.28, 0.16],
+    titleColor: [1.0, 1.0, 1.0],
+    subColor: [0.86, 0.95, 0.89],
+    showStatsBox: true,
+    statsBg: [0.94, 0.98, 0.95],
+    tableHeaderBg: [0.88, 0.94, 0.9],
+    tableHeaderBorder: [0.2, 0.5, 0.3],
+    tableHeaderColor: [0.05, 0.3, 0.15],
+    evenRowBg: [1.0, 1.0, 1.0],
+    oddRowBg: [0.95, 0.975, 0.955],
+    rowBorder: [0.85, 0.9, 0.86],
+    colDividers: false,
+    boxBorder: false,
+    colorPct: true,
+    showSignatureLines: false,
+  },
+};
 
 export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8Array {
   const yearFromMonth = data.monthStr ? data.monthStr.split(' ')[1] : '';
@@ -48,12 +145,18 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
     profiles,
     savedDatesCount,
     holidaysCount,
+    theme = 'default',
   } = data;
+
+  const cfg = THEME_CONFIGS[theme] || THEME_CONFIGS.default;
 
   const pageW = 842; // A4 Landscape width in points
   const pageH = 595; // A4 Landscape height in points
 
-  const maxRowsPage1 = 24;
+  // Layout sizing adjusts by theme: default starts higher and fits more rows on page 1
+  const isDefaultTheme = theme === 'default';
+  const isAcademicTheme = theme === 'academic';
+  const maxRowsPage1 = isDefaultTheme ? 27 : isAcademicTheme ? 22 : 24;
   const maxRowsSubsequent = 26;
   const totalStudents = roster.length;
 
@@ -63,6 +166,7 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
   }
 
   const colX = [36, 66, 140, 340, 420, 490, 560, 660];
+  const rightEdge = pageW - 36;
   const headers = ['#', 'Roll No', 'Student Name', 'Total Classes', 'Present', 'Absent', 'Percentage'];
   const rowHeight = 17;
 
@@ -71,6 +175,7 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
 
   for (let pageIdx = 0; pageIdx < totalPages; pageIdx++) {
     const isFirstPage = pageIdx === 0;
+    const isLastPage = pageIdx === totalPages - 1;
     const startIdx = isFirstPage ? 0 : maxRowsPage1 + (pageIdx - 1) * maxRowsSubsequent;
     const maxRows = isFirstPage ? maxRowsPage1 : maxRowsSubsequent;
     const endIdx = Math.min(totalStudents, startIdx + maxRows);
@@ -81,13 +186,13 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
     // Helper drawing primitives for this page
     const fillRect = (x: number, y: number, w: number, h: number, r: number, g: number, b: number) => {
       streamOps.push(`${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg`);
-      streamOps.push(`${x} ${y} ${w} ${h} re f`);
+      streamOps.push(`${x.toFixed(1)} ${y.toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)} re f`);
     };
 
-    const strokeLine = (x1: number, y1: number, x2: number, y2: number, r = 0.8, g = 0.8, b = 0.8) => {
+    const strokeLine = (x1: number, y1: number, x2: number, y2: number, r = 0.8, g = 0.8, b = 0.8, w = 0.5) => {
       streamOps.push(`${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} RG`);
-      streamOps.push(`0.5 w`);
-      streamOps.push(`${x1} ${y1} m ${x2} ${y2} l S`);
+      streamOps.push(`${w} w`);
+      streamOps.push(`${x1.toFixed(1)} ${y1.toFixed(1)} m ${x2.toFixed(1)} ${y2.toFixed(1)} l S`);
     };
 
     const drawText = (
@@ -105,7 +210,7 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
       streamOps.push('BT');
       streamOps.push(`${font} ${size} Tf`);
       streamOps.push(`${r.toFixed(3)} ${g.toFixed(3)} ${b.toFixed(3)} rg`);
-      streamOps.push(`1 0 0 1 ${x} ${y} Tm`);
+      streamOps.push(`1 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)} Tm`);
       streamOps.push(`(${escaped}) Tj`);
       streamOps.push('ET');
     };
@@ -113,58 +218,76 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
     let tableTop = pageH - 122;
 
     if (isFirstPage) {
-      // 1. Header Banner background (Page 1)
-      fillRect(36, pageH - 72, pageW - 72, 44, 0.95, 0.96, 0.98);
-      strokeLine(36, pageH - 72, pageW - 36, pageH - 72, 0.85, 0.88, 0.92);
+      if (theme === 'default') {
+        // ── Default Minimalist Header: Clean table title & subtext, no colored boxes ──
+        tableTop = pageH - 72;
+        drawText(`ATTENDANCE REGISTER — ${monthStr.toUpperCase()}`, 38, pageH - 42, 13, true, ...cfg.titleColor);
+        drawText(
+          `${institutionName} \u2022 ${departmentName} \u2022 Academic Year: ${academicYear} \u2022 Recorded Days: ${savedDatesCount}`,
+          38,
+          pageH - 56,
+          8,
+          false,
+          ...cfg.subColor
+        );
+        strokeLine(36, pageH - 62, rightEdge, pageH - 62, ...cfg.headerBorder, 1);
+      } else if (theme === 'academic') {
+        // ── Academic Formal Centered Header ──
+        tableTop = pageH - 86;
+        drawText(institutionName.toUpperCase(), pageW / 2 - 140, pageH - 36, 11, true, ...cfg.titleColor);
+        drawText(departmentName.toUpperCase(), pageW / 2 - 125, pageH - 49, 8.5, false, ...cfg.subColor);
+        drawText(`MONTHLY ATTENDANCE STATEMENT — ${monthStr.toUpperCase()}`, pageW / 2 - 130, pageH - 63, 9.5, true, ...cfg.titleColor);
+        drawText(`Academic Year: ${academicYear} \u2022 Total Students: ${roster.length}`, pageW / 2 - 70, pageH - 74, 7.5, false, ...cfg.subColor);
+        strokeLine(36, pageH - 78, rightEdge, pageH - 78, ...cfg.headerBorder, 1.2);
+        strokeLine(36, pageH - 80, rightEdge, pageH - 80, ...cfg.headerBorder, 0.5);
+      } else {
+        // ── Modern / Emerald Themed Header with Banner & Stats Strip ──
+        if (cfg.headerBg) {
+          fillRect(36, pageH - 72, pageW - 72, 44, ...cfg.headerBg);
+        }
+        strokeLine(36, pageH - 72, rightEdge, pageH - 72, ...cfg.headerBorder);
 
-      // Header Titles
-      drawText('Rollvia - Monthly Attendance Report', 48, pageH - 46, 14, true, 0.08, 0.15, 0.3);
-      drawText(
-        `${monthStr} | ${institutionName} - ${departmentName} (${academicYear})`,
-        48,
-        pageH - 62,
-        8.5,
-        false,
-        0.35,
-        0.4,
-        0.48
-      );
+        drawText('Rollvia - Monthly Attendance Report', 48, pageH - 46, 14, true, ...cfg.titleColor);
+        drawText(
+          `${monthStr} | ${institutionName} - ${departmentName} (${academicYear})`,
+          48,
+          pageH - 62,
+          8.5,
+          false,
+          ...cfg.subColor
+        );
 
-      // Top Metrics Strip
-      const statsY = pageH - 96;
-      fillRect(36, statsY - 4, pageW - 72, 18, 0.98, 0.98, 0.99);
-      drawText(`Total Enrolled: ${roster.length}`, 48, statsY, 8, true, 0.2, 0.25, 0.35);
-      drawText(`Recorded Days: ${savedDatesCount}`, 160, statsY, 8, true, 0.1, 0.55, 0.25);
-      drawText(`Holidays / No Classes: ${holidaysCount}`, 280, statsY, 8, true, 0.7, 0.45, 0.1);
-      drawText(`Generated on: ${new Date().toLocaleDateString()}`, pageW - 190, statsY, 7.5, false, 0.5, 0.5, 0.5);
+        if (cfg.showStatsBox) {
+          const statsY = pageH - 96;
+          fillRect(36, statsY - 4, pageW - 72, 18, ...cfg.statsBg);
+          strokeLine(36, statsY - 4, rightEdge, statsY - 4, ...cfg.headerBorder, 0.5);
+          drawText(`Total Enrolled: ${roster.length}`, 48, statsY, 8, true, 0.2, 0.25, 0.35);
+          drawText(`Recorded Days: ${savedDatesCount}`, 160, statsY, 8, true, 0.1, 0.55, 0.25);
+          drawText(`Holidays / No Classes: ${holidaysCount}`, 280, statsY, 8, true, 0.7, 0.45, 0.1);
+          drawText(`Generated: ${new Date().toLocaleDateString()}`, pageW - 190, statsY, 7.5, false, 0.5, 0.5, 0.5);
+        }
 
-      tableTop = pageH - 122;
+        tableTop = pageH - 122;
+      }
     } else {
-      // 1. Compact continuation header banner (Page 2+)
-      fillRect(36, pageH - 54, pageW - 72, 26, 0.95, 0.96, 0.98);
-      strokeLine(36, pageH - 54, pageW - 36, pageH - 54, 0.85, 0.88, 0.92);
+      // ── Compact continuation header banner (Page 2+) ──
+      tableTop = isDefaultTheme ? pageH - 58 : pageH - 80;
+      if (cfg.headerBg && theme !== 'default' && theme !== 'academic') {
+        fillRect(36, pageH - 54, pageW - 72, 26, ...cfg.headerBg);
+      }
+      strokeLine(36, tableTop + 24, rightEdge, tableTop + 24, ...cfg.headerBorder);
 
-      drawText('Rollvia - Monthly Attendance Report (Continued)', 48, pageH - 43, 11, true, 0.08, 0.15, 0.3);
-      drawText(
-        `${monthStr} | ${institutionName} - ${departmentName} (${academicYear})`,
-        380,
-        pageH - 43,
-        8,
-        false,
-        0.35,
-        0.4,
-        0.48
-      );
-
-      tableTop = pageH - 80;
+      drawText(`Rollvia - Monthly Attendance Report (Continued \u2014 Page ${pageIdx + 1})`, 48, tableTop + 30, 10, true, ...cfg.titleColor);
+      drawText(`${monthStr} | ${institutionName} (${academicYear})`, 380, tableTop + 30, 8, false, ...cfg.subColor);
     }
 
     // 2. Table Header (Repeated on every page)
-    fillRect(36, tableTop, pageW - 72, 18, 0.92, 0.94, 0.97);
-    strokeLine(36, tableTop, pageW - 36, tableTop, 0.8, 0.82, 0.86);
+    fillRect(36, tableTop, pageW - 72, 18, ...cfg.tableHeaderBg);
+    strokeLine(36, tableTop, rightEdge, tableTop, ...cfg.tableHeaderBorder, isDefaultTheme ? 1 : 0.6);
+    strokeLine(36, tableTop + 18, rightEdge, tableTop + 18, ...cfg.tableHeaderBorder, isDefaultTheme ? 1 : 0.6);
 
     headers.forEach((h, idx) => {
-      drawText(h, colX[idx] + 4, tableTop + 5, 7.5, true, 0.2, 0.25, 0.35);
+      drawText(h, colX[idx] + 4, tableTop + 5, 7.5, true, ...cfg.tableHeaderColor);
     });
 
     // 3. Table Rows for this page
@@ -174,11 +297,11 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
       const isEven = globalIdx % 2 === 0;
 
       if (isEven) {
-        fillRect(36, y, pageW - 72, rowHeight, 0.99, 0.99, 1.0);
+        fillRect(36, y, pageW - 72, rowHeight, ...cfg.evenRowBg);
       } else {
-        fillRect(36, y, pageW - 72, rowHeight, 0.96, 0.97, 0.98);
+        fillRect(36, y, pageW - 72, rowHeight, ...cfg.oddRowBg);
       }
-      strokeLine(36, y, pageW - 36, y, 0.9, 0.92, 0.94);
+      strokeLine(36, y, rightEdge, y, ...cfg.rowBorder, 0.4);
 
       const prof = profiles instanceof Map
         ? profiles.get(person.id)
@@ -188,28 +311,54 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
       const absent = prof ? prof.absentClasses : 0;
       const pct = prof ? prof.overallPercentage : '0.0%';
       const pctNum = parsePercentage(pct);
-      const [pr, pg, pb] = getPctColor(pctNum);
+      const [pr, pg, pb] = cfg.colorPct ? getPctColor(pctNum) : [0.1, 0.1, 0.1];
 
-      drawText(String(globalIdx + 1), colX[0] + 6, y + 4.5, 7.5, false, 0.4, 0.45, 0.5);
-      drawText(person.rollNumber || '—', colX[1] + 4, y + 4.5, 7.5, false, 0.15, 0.4, 0.7);
-      drawText(person.name || 'Unnamed', colX[2] + 4, y + 4.5, 7.5, true, 0.1, 0.1, 0.15);
-      drawText(String(total), colX[3] + 16, y + 4.5, 7.5, false, 0.3, 0.3, 0.3);
-      drawText(String(present), colX[4] + 16, y + 4.5, 7.5, true, 0.1, 0.6, 0.2);
-      drawText(String(absent), colX[5] + 16, y + 4.5, 7.5, true, 0.75, 0.2, 0.2);
+      drawText(String(globalIdx + 1), colX[0] + 6, y + 4.5, 7.5, false, 0.35, 0.35, 0.4);
+      drawText(person.rollNumber || '—', colX[1] + 4, y + 4.5, 7.5, false, 0.15, 0.35, 0.6);
+      drawText(person.name || 'Unnamed', colX[2] + 4, y + 4.5, 7.5, true, 0.1, 0.1, 0.12);
+      drawText(String(total), colX[3] + 16, y + 4.5, 7.5, false, 0.25, 0.25, 0.25);
+      drawText(String(present), colX[4] + 16, y + 4.5, 7.5, true, 0.1, 0.55, 0.2);
+      drawText(String(absent), colX[5] + 16, y + 4.5, 7.5, true, 0.7, 0.2, 0.2);
       drawText(pct, colX[6] + 14, y + 4.5, 7.5, true, pr, pg, pb);
     });
 
-    // Table bottom border
     const tableBottomY = tableTop - studentsOnPage.length * rowHeight;
-    strokeLine(36, tableBottomY, pageW - 36, tableBottomY, 0.8, 0.82, 0.86);
+    strokeLine(36, tableBottomY, rightEdge, tableBottomY, ...cfg.tableHeaderBorder, isDefaultTheme ? 1 : 0.6);
 
-    // 4. Footer Note & Page Number (Repeated on every page)
-    strokeLine(36, 42, pageW - 36, 42, 0.9, 0.92, 0.94);
+    // Vertical Column Grid Lines for Table (when enabled, e.g. Default Clean Table)
+    if (cfg.colDividers) {
+      const colDivX = [...colX, rightEdge];
+      colDivX.forEach((cx) => {
+        strokeLine(cx, tableTop + 18, cx, tableBottomY, ...cfg.rowBorder, 0.45);
+      });
+    }
+
+    // Outer Box Border
+    if (cfg.boxBorder) {
+      strokeLine(36, tableTop + 18, 36, tableBottomY, ...cfg.tableHeaderBorder, 1);
+      strokeLine(rightEdge, tableTop + 18, rightEdge, tableBottomY, ...cfg.tableHeaderBorder, 1);
+    }
+
+    // Academic Theme Signatures Block on Final Page
+    if (cfg.showSignatureLines && isLastPage) {
+      const sigY = 48;
+      strokeLine(colX[1], sigY + 12, colX[1] + 120, sigY + 12, 0.3, 0.3, 0.3, 0.7);
+      drawText('Faculty In-Charge', colX[1] + 15, sigY, 7.5, true, 0.2, 0.2, 0.2);
+
+      strokeLine(colX[3] + 10, sigY + 12, colX[3] + 140, sigY + 12, 0.3, 0.3, 0.3, 0.7);
+      drawText('Head of Department (HOD)', colX[3] + 15, sigY, 7.5, true, 0.2, 0.2, 0.2);
+
+      strokeLine(colX[6] - 30, sigY + 12, colX[6] + 100, sigY + 12, 0.3, 0.3, 0.3, 0.7);
+      drawText('Principal / Dean', colX[6] - 15, sigY, 7.5, true, 0.2, 0.2, 0.2);
+    }
+
+    // 4. Footer Note & Page Number
+    strokeLine(36, 32, rightEdge, 32, 0.88, 0.9, 0.92, 0.5);
     drawText(
-      `Official attendance export generated via Rollvia \u2022 ${monthStr} \u2022 Attendance colors: Green \u226575% \u00b7 Orange 60\u201374% \u00b7 Red <60%`,
+      `Official attendance export generated via Rollvia \u2022 ${monthStr} \u2022 Theme: ${theme.toUpperCase()}`,
       48,
-      28,
-      7,
+      20,
+      6.8,
       false,
       0.5,
       0.55,
@@ -217,7 +366,7 @@ export function generateMonthlyAttendancePdfBuffer(data: MonthlyPdfData): Uint8A
     );
 
     const pageNumText = `Page ${pageIdx + 1} of ${totalPages}`;
-    drawText(pageNumText, pageW - 110, 28, 7.5, true, 0.4, 0.45, 0.5);
+    drawText(pageNumText, pageW - 110, 20, 7.5, true, 0.4, 0.45, 0.5);
 
     pageContentStreams.push(streamOps.join('\n'));
   }
@@ -298,7 +447,8 @@ export function downloadMonthlyAttendancePdf(data: MonthlyPdfData) {
   const link = document.createElement('a');
   link.href = url;
   const safeMonth = data.monthStr.replace(/\s+/g, '_');
-  link.download = `Rollvia_Monthly_Report_${safeMonth}.pdf`;
+  const themeSuffix = data.theme ? `_${data.theme}` : '';
+  link.download = `Rollvia_Monthly_Report_${safeMonth}${themeSuffix}.pdf`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

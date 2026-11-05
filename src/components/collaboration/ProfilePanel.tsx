@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Radio,
   X,
+  Loader2,
 } from 'lucide-react';
 import { useFlow } from '../../context';
 import { Button } from '../ui/Button';
@@ -339,6 +340,20 @@ export const ProfilePanel: React.FC = () => {
                     >
                       {copied ? 'Code Copied!' : 'Copy Code'}
                     </Button>
+                    {isConnecting && (
+                      <span
+                        style={{
+                          fontSize: 10,
+                          color: 'var(--text-muted)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          marginTop: 2,
+                        }}
+                      >
+                        <Loader2 size={10} className="animate-spin" /> Synchronizing room data...
+                      </span>
+                    )}
                   </div>
 
                   {/* Connected Collaborators */}

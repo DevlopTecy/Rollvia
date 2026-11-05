@@ -12,7 +12,6 @@ import {
   CheckCircle2,
   RotateCcw,
   Edit3,
-  FileSpreadsheet,
   X,
   Zap,
   SlidersHorizontal,
@@ -22,8 +21,6 @@ import { getMonthCalendarData, getSubjectsForDate, getWeekdayForDate, hasDateSch
 import type { TimetableSubject } from '../../types';
 import { getAttendanceColor } from '../../utils/thresholds';
 import { SimpleQuickPanel } from './SimpleQuickPanel';
-import { MonthlyAttendanceSummaryModal } from './MonthlyAttendanceSummaryModal';
-import { ExportMenu } from './ExportMenu';
 import { DayScheduleEditor } from './DayScheduleEditor';
 import { CellCursor } from '../collaboration/CellCursor';
 // PDF export is handled via ExportMenu using downloadMonthlyAttendancePdf
@@ -72,9 +69,6 @@ export const AttendanceGrid: React.FC = () => {
   // Simple Quick Panel
   const [showSimpleQuick, setShowSimpleQuick] = useState(false);
   const focusSimpleQuickRef = useRef<(() => void) | null>(null);
-
-  // Monthly Attendance Summary Modal
-  const [showMonthlySummaryModal, setShowMonthlySummaryModal] = useState(false);
 
   // Day Schedule Override Modal
   const [showDayScheduleModal, setShowDayScheduleModal] = useState(false);
@@ -292,17 +286,29 @@ export const AttendanceGrid: React.FC = () => {
     });
   };
 
-  // Subject selection for Attendance Tools
-  const [selectedSubjectId, setSelectedSubjectId] = useState('');
-  const currentSelectedSubjectId = useMemo(() => {
-    if (activeDateSubjects.length === 0) return '';
-    const exists = activeDateSubjects.some((s) => s.id === selectedSubjectId);
-    return exists ? selectedSubjectId : activeDateSubjects[0].id;
-  }, [activeDateSubjects, selectedSubjectId]);
+  // Scope selection for Attendance Tools: 'all' or subjectId
+  const [selectedScope, setSelectedScope] = useState<string>('all');
+  const currentSelectedScope = useMemo(() => {
+    if (activeDateSubjects.length === 0) return 'all';
+    if (selectedScope === 'all') return 'all';
+    const exists = activeDateSubjects.some((s) => s.id === selectedScope);
+    return exists ? selectedScope : 'all';
+  }, [activeDateSubjects, selectedScope]);
 
-  const currentSubjectName = useMemo(() => {
-    return activeDateSubjects.find((s) => s.id === currentSelectedSubjectId)?.name || 'Class';
-  }, [activeDateSubjects, currentSelectedSubjectId]);
+  const currentScopeLabel = useMemo(() => {
+    if (currentSelectedScope === 'all') {
+      return `All Classes (${activeDateSubjects.length})`;
+    }
+    return activeDateSubjects.find((s) => s.id === currentSelectedScope)?.name || 'Class';
+  }, [activeDateSubjects, currentSelectedScope]);
+
+  const handleBulkAction = (present: boolean) => {
+    if (currentSelectedScope === 'all') {
+      promptAllClassesBulk(present);
+    } else {
+      promptSubjectBulk(currentSelectedScope, present);
+    }
+  };
 
   // Bulk action confirmation dialog state
   const [bulkConfirmModal, setBulkConfirmModal] = useState<{
@@ -764,445 +770,428 @@ export const AttendanceGrid: React.FC = () => {
         </div>
       )}
 
-      {/* ── Active Date Header ──────────────────────────────────────────────────── */}
+      {/* ── Active Date Header & Unified Action Toolbar ─────────────────────────── */}
       <div
         style={{
           backgroundColor: 'var(--bg-surface)',
           borderBottom: '1px solid var(--border-subtle)',
-          padding: '0.6rem 1.25rem',
+          padding: '0.55rem 1.25rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0,
-          gap: '0.75rem',
+          gap: '1rem',
           flexWrap: 'wrap',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button type="button" onClick={handlePrevDay} style={navBtnStyle} title="Previous Day">
-            <ChevronLeft size={14} />
-          </button>
-          <div>
-            <span style={{ fontWeight: 700, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+        {/* ── Left Cluster: Date Navigation & Context ─────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+          {/* Day Navigation Chevrons */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+            <button type="button" onClick={handlePrevDay} style={navBtnStyle} title="Previous Day">
+              <ChevronLeft size={14} />
+            </button>
+            <button type="button" onClick={handleNextDay} style={navBtnStyle} title="Next Day">
+              <ChevronRight size={14} />
+            </button>
+          </div>
+
+          {/* Date Title & Subject Badges */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 700, fontSize: '0.92rem', color: 'var(--text-primary)', letterSpacing: '-0.01em' }}>
               {formattedActiveDate}
             </span>
+
             {isCurrentDateHoliday ? (
-              <span style={{ marginLeft: '0.6rem', fontSize: '0.78rem', color: 'var(--warning-700)', fontWeight: 600 }}>
-                — Holiday ({currentHolidayReason})
+              <span
+                style={{
+                  fontSize: '0.72rem',
+                  color: 'var(--warning-700)',
+                  backgroundColor: 'var(--warning-50)',
+                  border: '1px solid var(--warning-200)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '0.15rem 0.5rem',
+                  fontWeight: 600,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.25rem',
+                }}
+              >
+                <CalendarOff size={11} /> Holiday ({currentHolidayReason || 'No Classes'})
               </span>
             ) : activeDateSubjects.length > 0 ? (
-              <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                {activeDateSubjects.map((s) => s.name).join(' • ')}
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                <span
+                  style={{
+                    fontSize: '0.73rem',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: 'var(--bg-canvas)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-xs)',
+                    padding: '0.15rem 0.5rem',
+                    fontWeight: 500,
+                  }}
+                >
+                  {activeDateSubjects.map((s) => s.name).join(' • ')}
+                </span>
                 {hasCurrentDateOverride && (
                   <span
                     style={{
-                      marginLeft: '0.45rem',
                       fontSize: '0.68rem',
                       fontWeight: 600,
                       color: 'var(--primary-700, #1d4ed8)',
                       backgroundColor: 'var(--primary-50, #eff6ff)',
                       border: '1px solid var(--primary-200, #bfdbfe)',
-                      padding: '0.05rem 0.35rem',
+                      padding: '0.15rem 0.45rem',
                       borderRadius: 'var(--radius-xs)',
                     }}
                   >
                     Custom Schedule
                   </span>
                 )}
-              </span>
+              </div>
             ) : (
-              <span style={{ marginLeft: '0.75rem', fontSize: '0.78rem', color: 'var(--warning-600)' }}>
-                No subjects scheduled ({activeWeekday})
-                {hasCurrentDateOverride && (
-                  <span
-                    style={{
-                      marginLeft: '0.45rem',
-                      fontSize: '0.68rem',
-                      fontWeight: 600,
-                      color: 'var(--primary-700, #1d4ed8)',
-                      backgroundColor: 'var(--primary-50, #eff6ff)',
-                      border: '1px solid var(--primary-200, #bfdbfe)',
-                      padding: '0.05rem 0.35rem',
-                      borderRadius: 'var(--radius-xs)',
-                    }}
-                  >
-                    Custom Schedule
-                  </span>
+              <span style={{ fontSize: '0.73rem', color: 'var(--warning-600)' }}>
+                No classes scheduled ({activeWeekday})
+              </span>
+            )}
+
+            {/* Status Indicator */}
+            {!isCurrentDateHoliday && (
+              <span
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  fontSize: '0.72rem',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: 'var(--radius-xs)',
+                  backgroundColor: hasUnsavedChanges
+                    ? 'var(--warning-50)'
+                    : isCurrentDateSaved
+                    ? 'rgba(16, 185, 129, 0.08)'
+                    : 'var(--primary-50)',
+                  color: hasUnsavedChanges
+                    ? 'var(--warning-700)'
+                    : isCurrentDateSaved
+                    ? 'var(--success-700, #047857)'
+                    : 'var(--primary-700)',
+                  border: hasUnsavedChanges
+                    ? '1px solid var(--warning-200)'
+                    : isCurrentDateSaved
+                    ? '1px solid rgba(16, 185, 129, 0.25)'
+                    : '1px solid var(--primary-200)',
+                  fontWeight: 600,
+                }}
+              >
+                {hasUnsavedChanges ? (
+                  <>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', backgroundColor: 'var(--warning-600)' }} />
+                    Unsaved Changes
+                  </>
+                ) : isCurrentDateSaved ? (
+                  <>
+                    <Check size={11} strokeWidth={2.5} /> Saved
+                  </>
+                ) : (
+                  <>
+                    <Edit3 size={11} /> Ready
+                  </>
                 )}
               </span>
             )}
           </div>
-          <button type="button" onClick={handleNextDay} style={navBtnStyle} title="Next Day">
-            <ChevronRight size={14} />
-          </button>
-
-          {/* Contextual Day State Badge */}
-          {isCurrentDateHoliday ? (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                fontSize: '0.72rem',
-                padding: '0.15rem 0.5rem',
-                borderRadius: 'var(--radius-xs)',
-                backgroundColor: 'var(--warning-50)',
-                color: 'var(--warning-700)',
-                border: '1px solid var(--warning-200)',
-                fontWeight: 600,
-              }}
-            >
-              <CalendarOff size={11} /> Holiday / No Classes
-            </span>
-          ) : !isCurrentDateSaved || isEditingActiveDate || hasUnsavedChanges ? (
-            <span
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                fontSize: '0.72rem',
-                padding: '0.15rem 0.5rem',
-                borderRadius: 'var(--radius-xs)',
-                backgroundColor: hasUnsavedChanges ? 'var(--warning-50)' : 'var(--primary-50)',
-                color: hasUnsavedChanges ? 'var(--warning-700)' : 'var(--primary-700)',
-                border: hasUnsavedChanges ? '1px solid var(--warning-200)' : '1px solid var(--primary-200)',
-                fontWeight: 600,
-              }}
-            >
-              <Edit3 size={11} /> {hasUnsavedChanges ? 'Editing Attendance (Unsaved)' : 'Ready for Attendance'}
-            </span>
-          ) : null}
-
-          {/* Contextual Action on Date: Remove Holiday OR Mark Holiday */}
-          {isCurrentDateHoliday ? (
-            <button
-              type="button"
-              onClick={() => removeDateHoliday(activeDate)}
-              title="Remove holiday status and restore normal weekday timetable"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-                backgroundColor: 'var(--warning-100)',
-                border: '1px solid var(--warning-300)',
-                borderRadius: 'var(--radius-xs)',
-                padding: '0.2rem 0.6rem',
-                fontSize: '0.72rem',
-                color: 'var(--warning-800)',
-                cursor: 'pointer',
-                fontWeight: 600,
-                marginLeft: '0.25rem',
-              }}
-            >
-              <Check size={11} /> Remove Holiday
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowHolidayModal(true)}
-              title="Mark this date as Holiday / No Classes (No Class / Holiday)"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '0.3rem',
-                background: 'transparent',
-                border: '1px solid var(--border-default)',
-                borderRadius: 'var(--radius-xs)',
-                padding: '0.2rem 0.55rem',
-                fontSize: '0.72rem',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                fontWeight: 500,
-                marginLeft: '0.25rem',
-              }}
-            >
-              <CalendarOff size={11} /> Mark Holiday / No Classes
-            </button>
-          )}
-
-          {/* Contextual Action on Date: Customize Day Classes (Override) */}
-          <button
-            type="button"
-            onClick={() => setShowDayScheduleModal(true)}
-            title="Customize class schedule for this specific date (Weekly timetable remains unchanged)"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              backgroundColor: hasCurrentDateOverride ? 'var(--primary-50, #eff6ff)' : 'transparent',
-              border: hasCurrentDateOverride ? '1px solid var(--primary-300, #93c5fd)' : '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-xs)',
-              padding: '0.2rem 0.55rem',
-              fontSize: '0.72rem',
-              color: hasCurrentDateOverride ? 'var(--primary-700, #1d4ed8)' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontWeight: hasCurrentDateOverride ? 600 : 500,
-              marginLeft: '0.25rem',
-            }}
-          >
-            <SlidersHorizontal size={11} /> {hasCurrentDateOverride ? 'Edit Day Classes (Customized)' : 'Customize Day'}
-          </button>
-
-          {/* Centralized Export Menu */}
-          <ExportMenu onOpenMonthlySummary={() => setShowMonthlySummaryModal(true)} />
-
-          {/* Monthly Attendance Summary Matrix button */}
-          <button
-            type="button"
-            onClick={() => setShowMonthlySummaryModal(true)}
-            title="Open Month-wise Attendance Summary Matrix"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              background: 'var(--primary-50, #eff6ff)',
-              border: '1px solid var(--primary-200, #bfdbfe)',
-              borderRadius: 'var(--radius-xs)',
-              padding: '0.2rem 0.55rem',
-              fontSize: '0.72rem',
-              color: 'var(--primary-700, #1d4ed8)',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            <FileSpreadsheet size={11} /> Monthly Summary
-          </button>
-
-          {/* Simple Quick toggle button */}
-          <button
-            type="button"
-            onClick={() => {
-              setShowSimpleQuick((prev) => {
-                if (!prev) {
-                  // Opening: focus command input after render
-                  setTimeout(() => focusSimpleQuickRef.current?.(), 80);
-                }
-                return !prev;
-              });
-            }}
-            title={showSimpleQuick ? 'Close Simple Quick (Ctrl+Q)' : 'Open Simple Quick panel (Ctrl+Q)'}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '0.3rem',
-              background: showSimpleQuick ? 'var(--primary-600)' : 'transparent',
-              border: showSimpleQuick ? 'none' : '1px solid var(--border-default)',
-              borderRadius: 'var(--radius-xs)',
-              padding: '0.2rem 0.55rem',
-              fontSize: '0.72rem',
-              color: showSimpleQuick ? '#fff' : 'var(--text-secondary)',
-              cursor: 'pointer',
-              fontWeight: showSimpleQuick ? 700 : 500,
-            }}
-          >
-            <Zap size={11} /> Simple Quick
-          </button>
         </div>
 
-        {/* ── Contextual Actions: [Edit Attendance] / [All Present] [All Absent] [Undo] [Redo] [Save] ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', flexWrap: 'wrap' }}>
-          {saveStatus && (
-            <span
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: 600,
-                color: saveStatus.isError ? 'var(--danger-600)' : 'var(--success-600)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-                marginRight: '0.25rem',
-              }}
-            >
-              {saveStatus.isError ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
-              {saveStatus.msg}
-            </span>
-          )}
+        {/* ── Right Cluster: Unified Toolbars ─────────────────────────────────── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', flexWrap: 'wrap' }}>
+          {/* Group 1: Day Configuration (Holiday, Customize, Simple Quick) */}
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.25rem',
+              backgroundColor: 'var(--bg-canvas)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.15rem 0.25rem',
+            }}
+          >
+            {isCurrentDateHoliday ? (
+              <button
+                type="button"
+                onClick={() => removeDateHoliday(activeDate)}
+                title="Remove holiday status and restore normal weekday timetable"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  backgroundColor: 'var(--warning-100)',
+                  border: '1px solid var(--warning-300)',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '0.22rem 0.55rem',
+                  fontSize: '0.72rem',
+                  color: 'var(--warning-800)',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  height: '26px',
+                }}
+              >
+                <Check size={11} /> Remove Holiday
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowHolidayModal(true)}
+                title="Mark this date as Holiday / No Classes"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  background: 'transparent',
+                  border: 'none',
+                  borderRadius: 'var(--radius-xs)',
+                  padding: '0.22rem 0.55rem',
+                  fontSize: '0.72rem',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  height: '26px',
+                }}
+              >
+                <CalendarOff size={11} /> Holiday
+              </button>
+            )}
 
-          {/* If Date is completed and in View Mode, show prominent "Edit Attendance" button */}
-          {!isCurrentDateHoliday && isCurrentDateSaved && !isEditingActiveDate && !hasUnsavedChanges ? (
             <button
               type="button"
-              onClick={() => setIsEditingActiveDate(true)}
-              title="Edit saved attendance marks for this day"
+              onClick={() => setShowDayScheduleModal(true)}
+              title="Customize class schedule for this specific date"
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '0.35rem',
-                backgroundColor: 'var(--primary-600)',
-                border: 'none',
-                borderRadius: 'var(--radius-sm)',
-                color: '#fff',
-                padding: '0.35rem 0.85rem',
-                fontSize: '0.8rem',
-                fontWeight: 600,
+                gap: '0.3rem',
+                backgroundColor: hasCurrentDateOverride ? 'var(--primary-50, #eff6ff)' : 'transparent',
+                border: hasCurrentDateOverride ? '1px solid var(--primary-300, #93c5fd)' : 'none',
+                borderRadius: 'var(--radius-xs)',
+                padding: '0.22rem 0.55rem',
+                fontSize: '0.72rem',
+                color: hasCurrentDateOverride ? 'var(--primary-700, #1d4ed8)' : 'var(--text-secondary)',
                 cursor: 'pointer',
-                transition: 'background-color 0.15s ease',
+                fontWeight: hasCurrentDateOverride ? 600 : 500,
+                height: '26px',
               }}
             >
-              <Edit3 size={13} /> Edit Attendance
+              <SlidersHorizontal size={11} /> Customize
             </button>
-          ) : !isCurrentDateHoliday ? (
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowSimpleQuick((prev) => {
+                  if (!prev) {
+                    setTimeout(() => focusSimpleQuickRef.current?.(), 80);
+                  }
+                  return !prev;
+                });
+              }}
+              title={showSimpleQuick ? 'Close Simple Quick (Ctrl+Q)' : 'Open Simple Quick panel (Ctrl+Q)'}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                background: showSimpleQuick ? 'var(--primary-600)' : 'transparent',
+                border: 'none',
+                borderRadius: 'var(--radius-xs)',
+                padding: '0.22rem 0.55rem',
+                fontSize: '0.72rem',
+                color: showSimpleQuick ? '#fff' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                fontWeight: showSimpleQuick ? 600 : 500,
+                height: '26px',
+              }}
+            >
+              <Zap size={11} /> Simple Quick
+            </button>
+          </div>
+
+          {/* Group 2: Attendance Actions & Bulk Controls (Only if not Holiday) */}
+          {!isCurrentDateHoliday && (
             <>
-              {/* ── Attendance Tools Area ── */}
-              <div
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  backgroundColor: 'var(--bg-canvas)',
-                  border: '1px solid var(--border-subtle)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '0.2rem 0.5rem',
-                  flexWrap: 'wrap',
-                }}
-              >
-                {/* A) Subject Actions: Apply to selected class */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <span
+              {/* Vertical Hairline Separator */}
+              <div style={{ width: '1px', height: '22px', backgroundColor: 'var(--border-subtle)' }} />
+
+              {/* View Mode -> "Edit Attendance" Button */}
+              {isCurrentDateSaved && !isEditingActiveDate && !hasUnsavedChanges ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingActiveDate(true)}
+                  title="Edit saved attendance marks for this day"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    backgroundColor: 'var(--primary-600)',
+                    border: 'none',
+                    borderRadius: 'var(--radius-sm)',
+                    color: '#fff',
+                    padding: '0.35rem 0.85rem',
+                    fontSize: '0.78rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    height: '30px',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                  }}
+                >
+                  <Edit3 size={13} /> Edit Attendance
+                </button>
+              ) : (
+                /* Edit Mode Controls */
+                <>
+                  {/* Unified Scope Dropdown + Bulk Fill */}
+                  <div
                     style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.02em',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.3rem',
+                      backgroundColor: 'var(--bg-canvas)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '0.15rem 0.3rem',
                     }}
-                    title="Apply to selected class"
                   >
-                    Class:
-                  </span>
-                  <select
-                    value={currentSelectedSubjectId}
-                    onChange={(e) => setSelectedSubjectId(e.target.value)}
-                    disabled={activeDateSubjects.length === 0}
+                    <select
+                      value={currentSelectedScope}
+                      onChange={(e) => setSelectedScope(e.target.value)}
+                      disabled={activeDateSubjects.length === 0}
+                      style={{
+                        fontSize: '0.73rem',
+                        fontWeight: 600,
+                        padding: '0.2rem 0.4rem',
+                        borderRadius: 'var(--radius-xs)',
+                        border: '1px solid var(--border-default)',
+                        backgroundColor: 'var(--bg-surface)',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer',
+                        outline: 'none',
+                        height: '26px',
+                      }}
+                      title="Select scope for batch attendance"
+                    >
+                      <option value="all">All Classes ({activeDateSubjects.length})</option>
+                      {activeDateSubjects.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          Class: {s.name}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAction(true)}
+                      disabled={activeDateSubjects.length === 0}
+                      title={`Mark all students Present for ${currentScopeLabel}`}
+                      style={{
+                        ...quickFillBtnStyle('success'),
+                        height: '26px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        padding: '0.2rem 0.55rem',
+                      }}
+                    >
+                      <CheckCircle2 size={11} /> All Present
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleBulkAction(false)}
+                      disabled={activeDateSubjects.length === 0}
+                      title={`Mark all students Absent for ${currentScopeLabel}`}
+                      style={{
+                        ...quickFillBtnStyle('danger'),
+                        height: '26px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                        padding: '0.2rem 0.55rem',
+                      }}
+                    >
+                      <X size={11} /> All Absent
+                    </button>
+                  </div>
+
+                  {/* Undo / Redo */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                    <button
+                      type="button"
+                      onClick={handleUndo}
+                      disabled={undoStack.length === 0}
+                      title="Undo attendance change (Ctrl+Z)"
+                      style={{ ...actionPillBtnStyle(undoStack.length > 0), height: '28px', padding: '0 0.55rem' }}
+                    >
+                      <Undo2 size={12} />
+                      <span>Undo</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleRedo}
+                      disabled={redoStack.length === 0}
+                      title="Redo attendance change (Ctrl+Y)"
+                      style={{ ...actionPillBtnStyle(redoStack.length > 0), height: '28px', padding: '0 0.55rem' }}
+                    >
+                      <Redo2 size={12} />
+                      <span>Redo</span>
+                    </button>
+                  </div>
+
+                  {/* Save Status Feedback */}
+                  {saveStatus && (
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 600,
+                        color: saveStatus.isError ? 'var(--danger-600)' : 'var(--success-600)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.25rem',
+                      }}
+                    >
+                      {saveStatus.isError ? <AlertCircle size={12} /> : <CheckCircle2 size={12} />}
+                      {saveStatus.msg}
+                    </span>
+                  )}
+
+                  {/* Primary Save Button */}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={isSaving || activeDateSubjects.length === 0}
                     style={{
-                      fontSize: '0.75rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.35rem',
+                      backgroundColor: isSaving ? 'var(--border-strong)' : 'var(--primary-600)',
+                      border: 'none',
+                      borderRadius: 'var(--radius-sm)',
+                      color: '#fff',
+                      padding: '0 0.85rem',
+                      height: '28px',
+                      fontSize: '0.78rem',
                       fontWeight: 600,
-                      padding: '0.2rem 0.4rem',
-                      borderRadius: 'var(--radius-xs)',
-                      border: '1px solid var(--border-default)',
-                      backgroundColor: 'var(--bg-surface)',
-                      color: 'var(--text-primary)',
-                      cursor: 'pointer',
-                      outline: 'none',
+                      cursor: isSaving || activeDateSubjects.length === 0 ? 'not-allowed' : 'pointer',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)',
+                      transition: 'background-color 0.15s ease',
                     }}
-                    title="Select class for class-specific attendance actions"
                   >
-                    {activeDateSubjects.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    type="button"
-                    onClick={() => promptSubjectBulk(currentSelectedSubjectId, true)}
-                    disabled={activeDateSubjects.length === 0}
-                    title={`Mark all students Present for ${currentSubjectName} only`}
-                    style={quickFillBtnStyle('success')}
-                  >
-                    All Present
+                    {isSaving ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                    {isSaving ? 'Saving…' : 'Save'}
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => promptSubjectBulk(currentSelectedSubjectId, false)}
-                    disabled={activeDateSubjects.length === 0}
-                    title={`Mark all students Absent for ${currentSubjectName} only`}
-                    style={quickFillBtnStyle('danger')}
-                  >
-                    All Absent
-                  </button>
-                </div>
-
-                {/* Divider */}
-                <div style={{ width: '1px', height: '18px', backgroundColor: 'var(--border-default)', margin: '0 2px' }} />
-
-                {/* B) Day Actions: Apply to all classes today */}
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
-                  <span
-                    style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.02em',
-                    }}
-                    title="Apply to all classes today"
-                  >
-                    All Classes:
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => promptAllClassesBulk(true)}
-                    disabled={activeDateSubjects.length === 0}
-                    title="Mark all students Present for all classes today"
-                    style={quickFillBtnStyle('success')}
-                  >
-                    Present All
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => promptAllClassesBulk(false)}
-                    disabled={activeDateSubjects.length === 0}
-                    title="Mark all students Absent for all classes today"
-                    style={quickFillBtnStyle('danger')}
-                  >
-                    Absent All
-                  </button>
-                </div>
-              </div>
-
-              {/* Undo */}
-              <button
-                type="button"
-                onClick={handleUndo}
-                disabled={undoStack.length === 0}
-                title="Undo attendance change (Ctrl+Z)"
-                style={actionPillBtnStyle(undoStack.length > 0)}
-              >
-                <Undo2 size={12} />
-                <span>Undo</span>
-              </button>
-
-              {/* Redo */}
-              <button
-                type="button"
-                onClick={handleRedo}
-                disabled={redoStack.length === 0}
-                title="Redo attendance change (Ctrl+Y)"
-                style={actionPillBtnStyle(redoStack.length > 0)}
-              >
-                <Redo2 size={12} />
-                <span>Redo</span>
-              </button>
-
-              {/* Save */}
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={isSaving || activeDateSubjects.length === 0}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '0.35rem',
-                  backgroundColor: isSaving ? 'var(--border-strong)' : 'var(--primary-600)',
-                  border: 'none',
-                  borderRadius: 'var(--radius-sm)',
-                  color: '#fff',
-                  padding: '0.35rem 0.85rem',
-                  fontSize: '0.8rem',
-                  fontWeight: 700,
-                  cursor: isSaving || activeDateSubjects.length === 0 ? 'not-allowed' : 'pointer',
-                  transition: 'background-color 0.15s ease',
-                }}
-              >
-                {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                {isSaving ? 'Saving…' : 'Save'}
-              </button>
+                </>
+              )}
             </>
-          ) : null}
+          )}
         </div>
       </div>
 
@@ -1844,12 +1833,6 @@ export const AttendanceGrid: React.FC = () => {
         onMonthChange={(year, monthIndex) => {
           setWorkspaceMonth(year, monthIndex);
         }}
-      />
-
-      {/* ── Monthly Attendance Summary Matrix Modal ────────────────────── */}
-      <MonthlyAttendanceSummaryModal
-        isOpen={showMonthlySummaryModal}
-        onClose={() => setShowMonthlySummaryModal(false)}
       />
 
       {/* ── Day Schedule Override Editor Modal ──────────────────────────── */}

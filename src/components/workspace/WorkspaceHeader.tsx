@@ -6,6 +6,7 @@ import { MONTH_NAMES, getSupportedYears, getMinSupportedYear, getMaxSupportedYea
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { ExportMenu } from './ExportMenu';
 import { MonthlyAttendanceSummaryModal } from './MonthlyAttendanceSummaryModal';
+import { PresenceBadges, ProfilePanel } from '../collaboration';
 import attendlyLogo from '../../assets/attendly-logo.png';
 import attendlyLogoDark from '../../assets/attendly-icon-dark.png';
 import attendlyLogoLight from '../../assets/attendly-icon-light.png';
@@ -602,6 +603,12 @@ export const WorkspaceHeader: React.FC<WorkspaceHeaderProps> = () => {
           <Users size={12} />
           <span style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>{sessionState.people.length}</span>
           <span>students</span>
+        </div>
+
+        {/* Live Collaboration Presence & Profile */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+          <PresenceBadges />
+          <ProfilePanel />
         </div>
 
         {/* Theme Toggle */}

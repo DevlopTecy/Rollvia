@@ -220,7 +220,7 @@ export const ProfilePanel: React.FC = () => {
           {/* Connection Name Input */}
           <Input
             label="Connection Name"
-            placeholder="e.g. Hitesh, Friend"
+            placeholder="e.g. Gok, Friend"
             value={connectionName}
             onChange={(e) => setConnectionName(e.target.value)}
             disabled={isConnecting}

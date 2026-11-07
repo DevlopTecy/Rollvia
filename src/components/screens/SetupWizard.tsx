@@ -16,6 +16,9 @@ import {
   Edit2,
   X,
   ClipboardList,
+  Wifi,
+  Radio,
+  ArrowRight,
 } from 'lucide-react';
 import { useFlow, useTheme } from '../../context';
 import { Button } from '../ui/Button';
@@ -65,11 +68,36 @@ export const SetupWizard: React.FC = () => {
     addTimetableSubject,
     updateTimetableSubject,
     deleteTimetableSubject,
+    collaboration,
   } = useFlow();
 
   const [activeTab, setActiveTab] = useState<SetupTab>('storage');
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importModalMode, setImportModalMode] = useState<ImportTabMode>('file');
+
+  // ─── Receiver Collab Join State ──────────────────────────────────────────────
+  const [joinRoomCode, setJoinRoomCode] = useState('');
+  const [joinReceiverName, setJoinReceiverName] = useState(collaboration.connectionName || 'Teacher');
+  const [joinError, setJoinError] = useState<string | null>(null);
+
+  const handleJoinAsReceiver = async () => {
+    const cleaned = joinRoomCode.replace(/[^A-Z0-9]/gi, '').toUpperCase().trim();
+    if (cleaned.length < 4) {
+      setJoinError('Please enter a valid 6-character room code (e.g. KD7-421)');
+      return;
+    }
+    setJoinError(null);
+    collaboration.clearError();
+    if (joinReceiverName.trim()) {
+      collaboration.setConnectionName(joinReceiverName.trim());
+    }
+    try {
+      await collaboration.joinRoom(cleaned);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to join live session';
+      setJoinError(msg);
+    }
+  };
 
   // ─── Storage State (Excel only) ──────────────────────────────────────────────
   const [excelFeedback, setExcelFeedback] = useState<string | null>(null);
@@ -306,6 +334,177 @@ export const SetupWizard: React.FC = () => {
           <Check size={13} /> Storage configured. Proceed to Students →
         </div>
       )}
+
+      {/* Divider */}
+      <div style={{ display: 'flex', alignItems: 'center', margin: '0.25rem 0' }}>
+        <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-subtle)' }} />
+        <span
+          style={{
+            padding: '0 0.85rem',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            color: 'var(--text-muted)',
+            letterSpacing: '0.08em',
+            textTransform: 'uppercase',
+          }}
+        >
+          Or Connect Live
+        </span>
+        <div style={{ flex: 1, height: '1px', backgroundColor: 'var(--border-subtle)' }} />
+      </div>
+
+      {/* Join as Receiver Card */}
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          padding: '1.25rem',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1.5px solid var(--border-default)',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-xs)',
+          gap: '1rem',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div
+              style={{
+                backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                color: 'var(--primary-600, #4f46e5)',
+                padding: '0.5rem',
+                borderRadius: 'var(--radius-sm)',
+                display: 'flex',
+              }}
+            >
+              <Wifi size={24} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)' }}>
+                Join Live Session as Receiver
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                No Excel file needed on this device • Syncs directly to Host PC
+              </div>
+            </div>
+          </div>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '0.35rem',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              color: 'var(--primary-700)',
+              backgroundColor: 'rgba(99, 102, 241, 0.08)',
+              padding: '0.25rem 0.6rem',
+              borderRadius: 'var(--radius-full)',
+            }}
+          >
+            <Radio size={11} /> Multi-Device Collab
+          </div>
+        </div>
+
+        <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.45 }}>
+          If a host teacher is already running attendance from their laptop, enter their 6-character room code below. The students, classes, and timetable will load automatically into your workspace, and your marks will save directly into their Excel workbook.
+        </p>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '0.75rem',
+            alignItems: 'flex-end',
+          }}
+        >
+          <div>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+              Your Name / Device
+            </label>
+            <input
+              type="text"
+              value={joinReceiverName}
+              onChange={(e) => setJoinReceiverName(e.target.value)}
+              placeholder="e.g. Assistant Teacher"
+              disabled={collaboration.isConnecting}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem',
+                fontSize: '0.85rem',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-default)',
+                backgroundColor: 'var(--bg-input, var(--bg-surface))',
+                color: 'var(--text-primary)',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 4 }}>
+              Host Room Code
+            </label>
+            <input
+              type="text"
+              value={joinRoomCode}
+              onChange={(e) => {
+                const formatted = e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '');
+                setJoinRoomCode(formatted);
+              }}
+              placeholder="e.g. KD7-421"
+              maxLength={8}
+              disabled={collaboration.isConnecting}
+              style={{
+                width: '100%',
+                padding: '0.5rem 0.75rem',
+                fontSize: '0.85rem',
+                fontFamily: 'monospace',
+                fontWeight: 700,
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border-default)',
+                backgroundColor: 'var(--bg-input, var(--bg-surface))',
+                color: 'var(--text-primary)',
+                outline: 'none',
+                boxSizing: 'border-box',
+              }}
+            />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.25rem' }}>
+          <Button
+            variant="primary"
+            size="md"
+            loading={collaboration.isConnecting}
+            disabled={joinRoomCode.replace(/[^A-Z0-9]/gi, '').length < 4}
+            onClick={handleJoinAsReceiver}
+            icon={<ArrowRight size={14} />}
+            style={{ flex: 1 }}
+          >
+            {collaboration.isConnecting ? 'Connecting to Host...' : 'Join Host Session →'}
+          </Button>
+
+          {collaboration.isConnecting && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={collaboration.cancelConnecting}
+              style={{ color: 'var(--danger-600)' }}
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
+
+        {(joinError || collaboration.error) && (
+          <div style={feedbackStyle('danger')}>
+            <AlertCircle size={13} /> {joinError || collaboration.error}
+          </div>
+        )}
+      </div>
     </div>
   );
 

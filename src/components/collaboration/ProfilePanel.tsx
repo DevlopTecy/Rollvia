@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  User,
   Wifi,
   Copy,
   Check,
@@ -23,7 +22,6 @@ export const ProfilePanel: React.FC = () => {
     connectionName,
     setConnectionName,
     createRoom,
-    joinRoom,
     leaveRoom,
     cancelConnecting,
     isConnecting,
@@ -32,9 +30,6 @@ export const ProfilePanel: React.FC = () => {
   } = collaboration;
 
   const [isOpen, setIsOpen] = useState(false);
-  const [userTab, setUserTab] = useState<'sender' | 'receiver' | null>(null);
-  const activeTab = userTab || session?.role || 'sender';
-  const [joinCodeInput, setJoinCodeInput] = useState('');
   const [copied, setCopied] = useState(false);
 
   const panelRef = useRef<HTMLDivElement>(null);
@@ -75,20 +70,8 @@ export const ProfilePanel: React.FC = () => {
     }
   };
 
-  const handleJoinReceiver = async () => {
-    const cleaned = joinCodeInput.replace(/[^A-Z0-9]/gi, '').trim();
-    if (!cleaned) return;
-    try {
-      clearError();
-      await joinRoom(cleaned);
-    } catch {
-      // error is handled in hook
-    }
-  };
-
   const handleLeave = async () => {
     await leaveRoom();
-    setJoinCodeInput('');
   };
 
   // Profile icon display character
@@ -108,7 +91,7 @@ export const ProfilePanel: React.FC = () => {
           setIsOpen((prev) => !prev);
           clearError();
         }}
-        title={session ? `Live Room: ${session.roomCode} (${session.role})` : 'Profile & Live Collaboration'}
+        title={session ? `Live Room: ${session.roomCode} (${session.role === 'sender' ? 'Host' : 'Receiver'})` : 'Profile & Live Collaboration'}
         aria-label="Profile and Live Collaboration"
         style={{
           display: 'flex',
@@ -130,7 +113,7 @@ export const ProfilePanel: React.FC = () => {
         onMouseEnter={(e) => {
           e.currentTarget.style.backgroundColor = session
             ? 'rgba(16, 185, 129, 0.18)'
-            : 'var(--bg-surface-hover)';
+            : 'var(--bg-surface-hover, rgba(0,0,0,0.04))';
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = session
@@ -138,79 +121,90 @@ export const ProfilePanel: React.FC = () => {
             : 'var(--bg-surface)';
         }}
       >
-        <div
+        <span
           style={{
-            width: 22,
-            height: 22,
+            width: 20,
+            height: 20,
             borderRadius: '50%',
             backgroundColor: session?.myColor || 'var(--primary-600, #4f46e5)',
-            color: '#fff',
+            color: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 10,
+            fontSize: '10px',
             fontWeight: 700,
             flexShrink: 0,
-            boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
           }}
         >
-          {initialChar || <User size={12} strokeWidth={2.2} />}
-        </div>
+          {initialChar || <Wifi size={10} />}
+        </span>
 
-        {session ? (
+        <span
+          style={{
+            maxWidth: 80,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {session ? `${session.roomCode.slice(0, 3)}-${session.roomCode.slice(3)}` : (connectionName || 'Host')}
+        </span>
+
+        {session && (
           <span
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              color: 'var(--success-600, #059669)',
-              letterSpacing: 0.5,
-              fontSize: '11px',
+              width: 6,
+              height: 6,
+              borderRadius: '50%',
+              backgroundColor: 'var(--success-500, #10b981)',
+              display: 'inline-block',
+              boxShadow: '0 0 4px rgba(16,185,129,0.6)',
             }}
-          >
-            <Radio size={11} className="animate-pulse" />
-            LIVE {session.roomCode}
-          </span>
-        ) : (
-          <span style={{ color: 'var(--text-secondary)', fontSize: '11px', fontWeight: 600 }}>
-            {connectionName.trim() ? connectionName.trim() : 'Profile'}
-          </span>
+          />
         )}
       </button>
 
-      {/* Floating Card Panel */}
+      {/* Floating Collab Panel */}
       {isOpen && (
         <div
           style={{
             position: 'absolute',
-            top: 'calc(100% + 8px)',
+            top: 'calc(100% + 6px)',
             right: 0,
             width: 320,
-            backgroundColor: 'var(--bg-surface)',
-            border: '1px solid var(--border-default)',
+            backgroundColor: 'var(--bg-surface, #ffffff)',
             borderRadius: 'var(--radius-md, 8px)',
-            boxShadow: '0 12px 32px -4px rgba(0,0,0,0.22), 0 4px 12px -2px rgba(0,0,0,0.1)',
-            zIndex: 2500,
-            padding: 16,
+            border: '1px solid var(--border-default, #e5e7eb)',
+            boxShadow: 'var(--shadow-lg, 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1))',
+            padding: 14,
+            zIndex: 1000,
             display: 'flex',
             flexDirection: 'column',
-            gap: 14,
+            gap: 12,
           }}
         >
           {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: 8,
+              borderBottom: '1px solid var(--border-subtle, #f3f4f6)',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Wifi size={15} style={{ color: 'var(--primary-600, #4f46e5)' }} />
-              <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                Live Collaboration
+              <Radio size={15} style={{ color: session ? 'var(--success-500)' : 'var(--primary-600)' }} />
+              <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>
+                {session?.role === 'receiver' ? 'Receiver Session' : 'Host Live Collaboration'}
               </span>
             </div>
             <button
               type="button"
               onClick={() => setIsOpen(false)}
               style={{
+                background: 'none',
                 border: 'none',
-                background: 'transparent',
                 cursor: 'pointer',
                 color: 'var(--text-muted)',
                 padding: 4,
@@ -223,7 +217,7 @@ export const ProfilePanel: React.FC = () => {
           {/* Connection Name Input */}
           <Input
             label="Connection Name"
-            placeholder="e.g. Gok, Friend"
+            placeholder="e.g. Host, Teacher"
             value={connectionName}
             onChange={(e) => setConnectionName(e.target.value)}
             disabled={isConnecting}
@@ -263,59 +257,6 @@ export const ProfilePanel: React.FC = () => {
             </div>
           )}
 
-          {/* Role Tabs */}
-          <div
-            style={{
-              display: 'flex',
-              backgroundColor: 'var(--bg-canvas, #f3f4f6)',
-              borderRadius: 'var(--radius-sm, 6px)',
-              padding: 2,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setUserTab('sender');
-                clearError();
-              }}
-              style={{
-                flex: 1,
-                padding: '6px 0',
-                border: 'none',
-                borderRadius: 'var(--radius-sm, 4px)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: activeTab === 'sender' ? 600 : 500,
-                backgroundColor: activeTab === 'sender' ? 'var(--bg-surface, #ffffff)' : 'transparent',
-                color: activeTab === 'sender' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                boxShadow: activeTab === 'sender' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-              }}
-            >
-              Sender (Host)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setUserTab('receiver');
-                clearError();
-              }}
-              style={{
-                flex: 1,
-                padding: '6px 0',
-                border: 'none',
-                borderRadius: 'var(--radius-sm, 4px)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: activeTab === 'receiver' ? 600 : 500,
-                backgroundColor: activeTab === 'receiver' ? 'var(--bg-surface, #ffffff)' : 'transparent',
-                color: activeTab === 'receiver' ? 'var(--text-primary)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                boxShadow: activeTab === 'receiver' ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-              }}
-            >
-              Receiver (Join)
-            </button>
-          </div>
-
           {/* Error Banner */}
           {error && (
             <div
@@ -336,247 +277,178 @@ export const ProfilePanel: React.FC = () => {
             </div>
           )}
 
-          {/* SENDER TAB CONTENT */}
-          {activeTab === 'sender' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {session?.role === 'sender' ? (
-                <>
+          {/* Body Content */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {session?.role === 'sender' ? (
+              <>
+                <div
+                  style={{
+                    padding: 12,
+                    backgroundColor: 'var(--bg-canvas, #f9fafb)',
+                    borderRadius: 'var(--radius-sm, 6px)',
+                    border: '1px dashed var(--border-default)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    Share this code with receivers on the Setup page:
+                  </span>
                   <div
                     style={{
-                      padding: 12,
-                      backgroundColor: 'var(--bg-canvas, #f9fafb)',
-                      borderRadius: 'var(--radius-sm, 6px)',
-                      border: '1px dashed var(--border-default)',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: 6,
+                      fontSize: 24,
+                      fontWeight: 800,
+                      letterSpacing: 3,
+                      fontFamily: 'monospace',
+                      color: 'var(--primary-600, #4f46e5)',
                     }}
                   >
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      Share this code with your friends:
-                    </span>
-                    <div
+                    {session.roomCode.slice(0, 3)}-{session.roomCode.slice(3)}
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={copied ? <Check size={13} /> : <Copy size={13} />}
+                    onClick={handleCopyCode}
+                  >
+                    {copied ? 'Code Copied!' : 'Copy Code'}
+                  </Button>
+                  {isConnecting && (
+                    <span
                       style={{
-                        fontSize: 24,
-                        fontWeight: 800,
-                        letterSpacing: 3,
-                        fontFamily: 'monospace',
-                        color: 'var(--primary-600, #4f46e5)',
+                        fontSize: 10,
+                        color: 'var(--text-muted)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        marginTop: 2,
                       }}
                     >
-                      {session.roomCode.slice(0, 3)}-{session.roomCode.slice(3)}
+                      <Loader2 size={10} className="animate-spin" /> Synchronizing room data...
+                    </span>
+                  )}
+                </div>
+
+                {/* Connected Collaborators */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      fontSize: 11,
+                      color: 'var(--text-muted)',
+                    }}
+                  >
+                    <span>Connected Collaborators:</span>
+                    <span>{otherCollaborators.length} online</span>
+                  </div>
+
+                  {otherCollaborators.length === 0 ? (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                      Waiting for receivers to join...
+                    </span>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {otherCollaborators.map(([uid, presence]) => (
+                        <div
+                          key={uid}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 5,
+                            padding: '2px 8px',
+                            borderRadius: 'var(--radius-full, 9999px)',
+                            backgroundColor: 'var(--bg-canvas)',
+                            fontSize: 11,
+                            border: '1px solid var(--border-default)',
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: '50%',
+                              backgroundColor: presence.color,
+                            }}
+                          />
+                          <span>{presence.displayName}</span>
+                        </div>
+                      ))}
                     </div>
+                  )}
+                </div>
+
+                <Button
+                  variant="danger"
+                  size="sm"
+                  icon={<LogOut size={13} />}
+                  onClick={handleLeave}
+                  style={{ marginTop: 4 }}
+                >
+                  End Session
+                </Button>
+              </>
+            ) : session?.role === 'receiver' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div
+                  style={{
+                    padding: 10,
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    borderRadius: 'var(--radius-sm, 6px)',
+                    border: '1px solid rgba(16, 185, 129, 0.2)',
+                    fontSize: 12,
+                    color: 'var(--success-700, #047857)',
+                  }}
+                >
+                  Connected to Room <strong>{session.roomCode}</strong> as Receiver. Changes you mark are saved directly to the Host PC.
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+                  <Users size={12} />
+                  <span>{activeCollaboratorsList.length} total in room</span>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<LogOut size={13} />}
+                  onClick={handleLeave}
+                >
+                  Leave Room & Return to Setup
+                </Button>
+              </div>
+            ) : (
+              <>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
+                  Start a live collaboration session from this laptop. Receivers on the Setup screen can enter your 6-character room code to join and mark attendance. All attendance records will be saved directly into your local Excel workbook.
+                </p>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <Button
+                    variant="primary"
+                    size="md"
+                    loading={isConnecting}
+                    onClick={handleStartSender}
+                    style={{ flex: 1 }}
+                  >
+                    Start as Sender
+                  </Button>
+                  {isConnecting && (
                     <Button
                       variant="secondary"
-                      size="sm"
-                      icon={copied ? <Check size={13} /> : <Copy size={13} />}
-                      onClick={handleCopyCode}
-                    >
-                      {copied ? 'Code Copied!' : 'Copy Code'}
-                    </Button>
-                    {isConnecting && (
-                      <span
-                        style={{
-                          fontSize: 10,
-                          color: 'var(--text-muted)',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 4,
-                          marginTop: 2,
-                        }}
-                      >
-                        <Loader2 size={10} className="animate-spin" /> Synchronizing room data...
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Connected Collaborators */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        fontSize: 11,
-                        color: 'var(--text-muted)',
-                      }}
-                    >
-                      <span>Connected Collaborators:</span>
-                      <span>{otherCollaborators.length} online</span>
-                    </div>
-
-                    {otherCollaborators.length === 0 ? (
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                        Waiting for friends to join...
-                      </span>
-                    ) : (
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {otherCollaborators.map(([uid, presence]) => (
-                          <div
-                            key={uid}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 5,
-                              padding: '2px 8px',
-                              borderRadius: 'var(--radius-full, 9999px)',
-                              backgroundColor: 'var(--bg-canvas)',
-                              fontSize: 11,
-                              border: '1px solid var(--border-default)',
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: '50%',
-                                backgroundColor: presence.color,
-                              }}
-                            />
-                            <span>{presence.displayName}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    icon={<LogOut size={13} />}
-                    onClick={handleLeave}
-                    style={{ marginTop: 4 }}
-                  >
-                    End Session
-                  </Button>
-                </>
-              ) : session?.role === 'receiver' ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div>You are currently joined to Room <strong>{session.roomCode}</strong> as a Receiver. Leave that room to host a new session.</div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<LogOut size={13} />}
-                    onClick={handleLeave}
-                  >
-                    Leave Room
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                    Start a session from this laptop. All attendance records will be saved directly on your PC.
-                  </p>
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <Button
-                      variant="primary"
                       size="md"
-                      loading={isConnecting}
-                      onClick={handleStartSender}
-                      style={{ flex: 1 }}
+                      onClick={cancelConnecting}
+                      style={{ color: 'var(--danger-600)' }}
                     >
-                      Start as Sender
+                      Cancel
                     </Button>
-                    {isConnecting && (
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        onClick={cancelConnecting}
-                        style={{ color: 'var(--danger-600)' }}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {/* RECEIVER TAB CONTENT */}
-          {activeTab === 'receiver' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {session?.role === 'receiver' ? (
-                <>
-                  <div
-                    style={{
-                      padding: 10,
-                      backgroundColor: 'rgba(16, 185, 129, 0.08)',
-                      borderRadius: 'var(--radius-sm, 6px)',
-                      border: '1px solid rgba(16, 185, 129, 0.2)',
-                      fontSize: 12,
-                      color: 'var(--success-700, #047857)',
-                    }}
-                  >
-                    Connected to Room <strong>{session.roomCode}</strong>. Changes you make will be saved on the Sender&apos;s PC.
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-                    <Users size={12} />
-                    <span>{activeCollaboratorsList.length} total in room</span>
-                  </div>
-
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    icon={<LogOut size={13} />}
-                    onClick={handleLeave}
-                  >
-                    Leave Room
-                  </Button>
-                </>
-              ) : session?.role === 'sender' ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <div>You are currently hosting Room <strong>{session.roomCode}</strong> as Sender. End your session if you wish to join another room as Receiver.</div>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    icon={<LogOut size={13} />}
-                    onClick={handleLeave}
-                  >
-                    End Session
-                  </Button>
+                  )}
                 </div>
-              ) : (
-                <>
-                  <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
-                    Enter the 6-character Room Code provided by the Sender:
-                  </p>
-                  <Input
-                    placeholder="e.g. KD7-421"
-                    value={joinCodeInput}
-                    maxLength={8}
-                    onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
-                    disabled={isConnecting}
-                    style={{ textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: 2, fontWeight: 700 }}
-                  />
-                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                    <Button
-                      variant="primary"
-                      size="md"
-                      loading={isConnecting}
-                      disabled={joinCodeInput.replace(/[^A-Z0-9]/gi, '').trim().length < 4}
-                      onClick={handleJoinReceiver}
-                      style={{ flex: 1 }}
-                    >
-                      Join Session
-                    </Button>
-                    {isConnecting && (
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        onClick={cancelConnecting}
-                        style={{ color: 'var(--danger-600)' }}
-                      >
-                        Cancel
-                      </Button>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

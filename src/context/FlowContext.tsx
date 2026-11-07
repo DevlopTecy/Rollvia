@@ -256,6 +256,22 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
   });
 
+  // Auto-return receiver to Setup screen when collaboration session ends or receiver leaves
+  const previousCollabRoleRef = useRef<'sender' | 'receiver' | null>(null);
+  useEffect(() => {
+    if (collaboration.session?.role) {
+      previousCollabRoleRef.current = collaboration.session.role;
+    } else if (!collaboration.session && previousCollabRoleRef.current === 'receiver') {
+      previousCollabRoleRef.current = null;
+      setSessionState((prev) => {
+        if (prev.appPhase === 'workspace') {
+          return { ...prev, appPhase: 'setup' };
+        }
+        return prev;
+      });
+    }
+  }, [collaboration.session]);
+
   const [googleStatus, setGoogleStatus] = useState<GoogleStatus>({
     isAuthenticated: false,
     authType: null,

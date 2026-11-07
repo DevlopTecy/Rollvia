@@ -132,7 +132,7 @@ export function isSubjectMarkedOnDate(
   savedDailyAttendance?: DailyAttendanceMap,
   attendanceRecords?: AttendanceRecord[]
 ): boolean {
-  // Check savedDailyAttendance
+  // Check savedDailyAttendance first if present (direct memory state)
   const daySaved = savedDailyAttendance?.[dateStr];
   if (daySaved) {
     for (const personMarks of Object.values(daySaved)) {
@@ -149,6 +149,8 @@ export function isSubjectMarkedOnDate(
         }
       }
     }
+    // If the date exists in savedDailyAttendance, that map is the definitive record of what was conducted
+    return false;
   }
 
   // Check attendanceRecords

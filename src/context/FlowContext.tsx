@@ -157,6 +157,10 @@ const INITIAL_STATE: AppSessionState = {
   attendance: {},
 };
 
+function getCurrentEpoch(): number {
+  return Date.now();
+}
+
 export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentStep, setCurrentStep] = useState<StepId>(1);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -232,7 +236,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
             requestId: req.id,
             targetDate: req.targetDate,
             success: true,
-            timestamp: Date.now(),
+            timestamp: getCurrentEpoch(),
           });
         } else {
           collaboration.respondRemoteSave({
@@ -240,7 +244,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
             targetDate: req.targetDate,
             success: false,
             error: res.error || 'Failed to save attendance on host PC',
-            timestamp: Date.now(),
+            timestamp: getCurrentEpoch(),
           });
         }
       } catch (err: unknown) {
@@ -250,7 +254,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           targetDate: req.targetDate,
           success: false,
           error: msg,
-          timestamp: Date.now(),
+          timestamp: getCurrentEpoch(),
         });
       }
     },
@@ -913,6 +917,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         people: prev.people,
         classes: activeClasses,
         personAttendance: personAttendanceMap,
+        treatUnmarkedAsAbsent: false,
       });
 
       // Merge with existing records (remove old ones for this date, add new)
@@ -1289,6 +1294,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
       people: sessionState.people,
       classes: activeClasses,
       personAttendance: personAttendanceForDate,
+      treatUnmarkedAsAbsent: false,
       metadata: {
         institutionName: sessionState.institutionName,
         departmentName: sessionState.departmentName,
@@ -1315,6 +1321,7 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           people: prev.people,
           classes: activeClasses,
           personAttendance: personAttendanceForDate,
+          treatUnmarkedAsAbsent: false,
         });
         const existingOtherRecords = (prev.attendanceRecords || []).filter((r) => r.date !== dateStr);
         const mergedRecords = [...existingOtherRecords, ...newRecords];

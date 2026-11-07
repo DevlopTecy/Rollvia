@@ -150,8 +150,9 @@ export function buildAttendanceRecords(params: {
   classes: ClassSession[];
   personAttendance: Record<string, Record<string, boolean>>;
   markedAt?: string;
+  treatUnmarkedAsAbsent?: boolean;
 }): AttendanceRecord[] {
-  const { date, people, classes, personAttendance, markedAt } = params;
+  const { date, people, classes, personAttendance, markedAt, treatUnmarkedAsAbsent = true } = params;
   const timestamp = markedAt || new Date().toISOString();
   const records: AttendanceRecord[] = [];
 
@@ -160,7 +161,14 @@ export function buildAttendanceRecords(params: {
     const personMarks = personAttendance[personId] || {};
 
     for (const cls of classes) {
-      const isPresent = Boolean(personMarks[cls.id] ?? personMarks[cls.name]);
+      const mark = personMarks[cls.id] ?? personMarks[cls.name];
+      if (mark === undefined || mark === null) {
+        if (!treatUnmarkedAsAbsent) {
+          // Do not record untoggled/unmarked/unconducted class as Absent
+          continue;
+        }
+      }
+      const isPresent = Boolean(mark);
       const status: AttendanceStatusValue = isPresent ? 'Present' : 'Absent';
       const recordId = `rec_${date}_${personId}_${cls.id}`;
 
@@ -192,14 +200,16 @@ export function buildAttendanceDataset(params: {
   classes: ClassSession[];
   personAttendance: Record<string, Record<string, boolean>>;
   metadata?: Partial<AttendanceMetadata>;
+  treatUnmarkedAsAbsent?: boolean;
 }): AttendanceDataset {
-  const { storageMode, date, formattedDate, people, classes, personAttendance, metadata } = params;
+  const { storageMode, date, formattedDate, people, classes, personAttendance, metadata, treatUnmarkedAsAbsent } = params;
 
   const records = buildAttendanceRecords({
     date,
     people,
     classes,
     personAttendance,
+    treatUnmarkedAsAbsent,
   });
 
   const summary = calculateAttendanceSummary(records);

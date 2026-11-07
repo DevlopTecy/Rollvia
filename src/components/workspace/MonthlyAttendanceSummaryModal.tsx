@@ -18,6 +18,7 @@ import {
   computeMonthlyAttendanceMatrix,
   extractUniqueSubjectNames,
   type MonthlyAttendanceMatrix,
+  type ExportScope,
 } from '../../utils/monthlyAttendanceSummary';
 import { downloadMonthlySummaryExcel } from '../../utils/monthlySummaryExcelExport';
 import { downloadMonthlySummaryPdf } from '../../utils/monthlySummaryPdfExport';
@@ -59,6 +60,16 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [exportNotice, setExportNotice] = useState<{ message: string; isError: boolean } | null>(null);
 
+  const [exportScope, setExportScope] = useState<ExportScope>(() => {
+    const saved = localStorage.getItem('rollvia_export_scope');
+    return saved === 'all' || saved === 'selective' ? saved : 'selective';
+  });
+
+  const handleExportScopeChange = (scope: ExportScope) => {
+    setExportScope(scope);
+    localStorage.setItem('rollvia_export_scope', scope);
+  };
+
   const supportedYears = useMemo(() => getSupportedYears(), []);
 
   // Sync preset changes to start/end months
@@ -99,6 +110,7 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
       startMonthIndex,
       endMonthIndex,
       subjectFilter: selectedSubjects.length > 0 ? selectedSubjects : undefined,
+      exportScope,
     });
   }, [
     people,
@@ -112,6 +124,7 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
     startMonthIndex,
     endMonthIndex,
     selectedSubjects,
+    exportScope,
   ]);
 
   // Filter students by search query
@@ -431,6 +444,60 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* Class Counting Mode (Selective vs All) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span className="mas-filter-label" style={{ whiteSpace: 'nowrap' }}>Counting</span>
+              <div
+                style={{
+                  display: 'inline-flex',
+                  backgroundColor: 'var(--mas-bg, #0f172a)',
+                  border: '1px solid var(--mas-border-default, #334155)',
+                  borderRadius: '6px',
+                  padding: '2px',
+                  gap: '2px',
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => handleExportScopeChange('selective')}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: exportScope === 'selective' ? 700 : 500,
+                    borderRadius: '4px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: exportScope === 'selective' ? 'var(--primary-600, #3b82f6)' : 'transparent',
+                    color: exportScope === 'selective' ? '#ffffff' : 'var(--text-muted, #94a3b8)',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="Selective mode: only counts classes where attendance (P or A) was recorded"
+                >
+                  🎯 Selective
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportScopeChange('all')}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: '0.72rem',
+                    fontWeight: exportScope === 'all' ? 700 : 500,
+                    borderRadius: '4px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: exportScope === 'all' ? 'var(--primary-600, #3b82f6)' : 'transparent',
+                    color: exportScope === 'all' ? '#ffffff' : 'var(--text-muted, #94a3b8)',
+                    transition: 'all 0.15s ease',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title="All Scheduled mode: counts every timetable slot across the entire calendar month"
+                >
+                  📅 All Scheduled
+                </button>
+              </div>
             </div>
           </div>
 

@@ -45,9 +45,15 @@ async function run() {
       totalPresent: 1,
       totalAbsent: 0,
       attendancePercentage: 100,
-      uniquePeople: 1,
-      uniqueClasses: 1,
+      uniquePeopleCount: 1,
+      uniqueClassesCount: 1,
     },
+    roster: [
+      { id: 'p1', name: 'Alice Smith', rollNumber: 'CS101' },
+    ],
+    classes: [
+      { id: 'sub_1', code: 'CS101', name: 'DBMS', instructor: 'Prof A', timeSlot: '10:00', room: '101', days: ['Tuesday'], totalEnrolled: 1 },
+    ],
     metadata: {
       institutionName: 'Rollvia Engineering College',
       departmentName: 'Computer Science Department',
@@ -55,6 +61,7 @@ async function run() {
       selectedMonth: 'September 2026',
       selectedYear: 2026,
       selectedMonthIndex: 8,
+      recordedAt: new Date().toISOString(),
       weeklyTimetable: {
         Tuesday: [{ id: 'sub_1', name: 'DBMS' }],
       },
@@ -92,7 +99,7 @@ async function run() {
   const backupDir = path.join(testDir, '.rollvia_backups');
   assert(fs.existsSync(backupDir), '.rollvia_backups directory must exist.');
 
-  const backupFiles = fs.readdirSync(backupDir).filter((f) => f.endsWith('.xlsx'));
+  const backupFiles = fs.readdirSync(backupDir).filter((f: string) => f.endsWith('.xlsx'));
   assert(backupFiles.length >= 1, `Expected at least 1 backup file, found ${backupFiles.length}`);
   console.log(`[PASS] Backup directory created: ${backupDir}`);
   console.log(`[PASS] Timestamped backup verified: ${backupFiles[0]}`);
@@ -108,7 +115,7 @@ async function run() {
   // Trigger save again to enforce pruning
   await adapter.save(dataset2, testWorkbookPath);
 
-  const prunedBackups = fs.readdirSync(backupDir).filter((f) => f.endsWith('.xlsx'));
+  const prunedBackups = fs.readdirSync(backupDir).filter((f: string) => f.endsWith('.xlsx'));
   assert(prunedBackups.length <= 16, `Expected pruned backup count <= 16, got ${prunedBackups.length}`);
   console.log(`[PASS] Pruning succeeded: backup count capped at ${prunedBackups.length} (limit 15).`);
 
@@ -119,6 +126,7 @@ async function run() {
     academicYear: '2026–2027',
     monthGroups: [
       {
+        year: 2026,
         monthIndex: 8,
         monthName: 'September',
         totalClasses: 30,
@@ -132,7 +140,9 @@ async function run() {
         overallAbsent: 2,
         overallTotal: 30,
         overallPercentage: 93.3,
-        months: [],
+        overallAttended: 28,
+        overallConducted: 30,
+        monthlyData: [],
       },
       {
         student: { id: 's2', name: 'Bob Jones', rollNumber: 'CS102' },
@@ -140,7 +150,9 @@ async function run() {
         overallAbsent: 12,
         overallTotal: 30,
         overallPercentage: 60.0,
-        months: [],
+        overallAttended: 18,
+        overallConducted: 30,
+        monthlyData: [],
       },
       {
         student: { id: 's3', name: 'Charlie Williams', rollNumber: 'CS103' },
@@ -148,7 +160,9 @@ async function run() {
         overallAbsent: 6,
         overallTotal: 30,
         overallPercentage: 80.0,
-        months: [],
+        overallAttended: 24,
+        overallConducted: 30,
+        monthlyData: [],
       },
     ],
     allSubjects: ['DBMS', 'Java'],

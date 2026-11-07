@@ -87,7 +87,7 @@ async function runScenario() {
     date: '2026-09-01',
     formattedDate: '1 September 2026',
     roster,
-    classes: [{ id: 'c_pp', name: 'PP' }, { id: 'c_dccn', name: 'DCCN' }],
+    classes: [{ id: 'c_pp', name: 'PP' } as any, { id: 'c_dccn', name: 'DCCN' } as any],
     records: session1Records,
     summary: {
       totalRecords: 4,
@@ -129,7 +129,7 @@ async function runScenario() {
     date: '2026-09-02',
     formattedDate: '2 September 2026',
     roster,
-    classes: [{ id: 'c_java', name: 'Java' }, { id: 'c_os', name: 'OS' }, { id: 'c_dccn', name: 'DCCN' }],
+    classes: [{ id: 'c_java', name: 'Java' } as any, { id: 'c_os', name: 'OS' } as any, { id: 'c_dccn', name: 'DCCN' } as any],
     records: session2Records,
     summary: {
       totalRecords: 6,
@@ -169,7 +169,7 @@ async function runScenario() {
     date: '2026-09-03',
     formattedDate: '3 September 2026',
     roster,
-    classes: [{ id: 'c_dbms', name: 'DBMS' }, { id: 'c_pp', name: 'PP' }],
+    classes: [{ id: 'c_dbms', name: 'DBMS' } as any, { id: 'c_pp', name: 'PP' } as any],
     records: session3Records,
     summary: {
       totalRecords: 4,
@@ -353,7 +353,7 @@ async function runScenario() {
     date: '2026-09-01',
     formattedDate: '1 September 2026',
     roster,
-    classes: [{ id: 'c_pp', name: 'PP' }, { id: 'c_dccn', name: 'DCCN' }],
+    classes: [{ id: 'c_pp', name: 'PP' } as any, { id: 'c_dccn', name: 'DCCN' } as any],
     records: modifiedSession1Records,
     summary: {
       totalRecords: 4,

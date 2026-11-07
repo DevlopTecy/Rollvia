@@ -18,6 +18,7 @@ import { downloadMonthlyAttendancePdf, type ExportTheme } from '../../utils/pdfE
 import { downloadAttendanceExcel } from '../../utils/attendanceExcelExport';
 import {
   computeMonthlyAttendanceMatrix,
+  computeMonthConductedClasses,
   extractUniqueSubjectNames,
 } from '../../utils/monthlyAttendanceSummary';
 import { downloadMonthlySummaryExcel } from '../../utils/monthlySummaryExcelExport';
@@ -72,6 +73,27 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
     setExportTheme(t);
     try {
       localStorage.setItem('rollvia_export_theme', t);
+    } catch {
+      // ignore
+    }
+  };
+
+  const [exportScope, setExportScope] = useState<'all' | 'selective'>(() => {
+    try {
+      const saved = localStorage.getItem('rollvia_export_scope');
+      if (saved === 'all' || saved === 'selective') {
+        return saved;
+      }
+    } catch {
+      // ignore
+    }
+    return 'selective';
+  });
+
+  const handleSelectScope = (s: 'all' | 'selective') => {
+    setExportScope(s);
+    try {
+      localStorage.setItem('rollvia_export_scope', s);
     } catch {
       // ignore
     }
@@ -146,8 +168,33 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
 
       const monthRecs = getMonthAttendanceRecords(activeYr, activeMo);
       const profilesMap = new Map<string, StudentAttendanceProfile>();
+      const availableSubs = extractUniqueSubjectNames(weeklyTimetable, attendanceRecords, activeYr, dateScheduleOverrides);
+      const scheduledInfo = computeMonthConductedClasses({
+        year: activeYr,
+        monthIndex: activeMo,
+        subjects: availableSubs,
+        weeklyTimetable,
+        dateScheduleOverrides,
+        noClassDates,
+        exportScope: 'all',
+      });
+      const monthScheduledTotal = scheduledInfo.totalConducted;
+
       for (const p of people) {
-        profilesMap.set(p.id, calculateStudentAttendanceProfile(p, monthRecs));
+        const rawProf = calculateStudentAttendanceProfile(p, monthRecs);
+        if (exportScope === 'all' && monthScheduledTotal > 0) {
+          const totalCls = Math.max(monthScheduledTotal, rawProf.presentClasses);
+          const absentCls = Math.max(0, totalCls - rawProf.presentClasses);
+          const pct = totalCls > 0 ? (Math.round((rawProf.presentClasses / totalCls) * 1000) / 10).toFixed(1) + '%' : '0.0%';
+          profilesMap.set(p.id, {
+            ...rawProf,
+            totalClasses: totalCls,
+            absentClasses: absentCls,
+            overallPercentage: pct,
+          });
+        } else {
+          profilesMap.set(p.id, rawProf);
+        }
       }
 
       const monthPrefix = `${activeYr}-${String(activeMo + 1).padStart(2, '0')}`;
@@ -203,6 +250,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
         academicYear: academicYear || String(activeYr),
         startMonthIndex: 0,
         endMonthIndex: 11,
+        exportScope,
       });
 
       const res = await downloadMonthlySummaryExcel(matrix);
@@ -247,6 +295,7 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
         academicYear: academicYear || String(activeYr),
         startMonthIndex: 0,
         endMonthIndex: 11,
+        exportScope,
       });
 
       downloadMonthlySummaryPdf(matrix, {
@@ -454,6 +503,100 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
                   </button>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Class Counting Mode Selector (Export Selective vs Export All) */}
+          <div
+            style={{
+              margin: '0 0.5rem 0.4rem',
+              padding: '0.45rem',
+              backgroundColor: 'var(--bg-canvas, #f8fafc)',
+              borderRadius: 'var(--radius-sm, 6px)',
+              border: '1px solid var(--border-subtle, #e2e8f0)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.3rem' }}>
+              <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                Count Classes Mode:
+              </span>
+              <span
+                style={{
+                  fontSize: '0.63rem',
+                  fontWeight: 700,
+                  color: exportScope === 'selective' ? 'var(--primary-600, #4f46e5)' : 'var(--text-secondary, #475569)',
+                }}
+              >
+                {exportScope === 'selective' ? 'Selective (P/A only)' : 'Export All'}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.3rem' }}>
+              <button
+                type="button"
+                onClick={() => handleSelectScope('selective')}
+                title="Export Selective: Only classes where you added Present or Absent are considered as classes. Non-P or non-A added classes won't be in the total."
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  padding: '0.3rem 0.45rem',
+                  borderRadius: 'var(--radius-xs, 4px)',
+                  border: exportScope === 'selective'
+                    ? '1.5px solid var(--primary-600, #4f46e5)'
+                    : '1px solid var(--border-default, #cbd5e1)',
+                  backgroundColor: exportScope === 'selective'
+                    ? 'var(--bg-surface, #ffffff)'
+                    : 'transparent',
+                  color: exportScope === 'selective'
+                    ? 'var(--primary-700, #1d4ed8)'
+                    : 'var(--text-secondary, #475569)',
+                  fontSize: '0.69rem',
+                  fontWeight: exportScope === 'selective' ? 700 : 500,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  boxShadow: exportScope === 'selective' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  transition: 'all 0.12s ease',
+                }}
+              >
+                <span style={{ fontSize: '11px', flexShrink: 0 }}>🎯</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Selective
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleSelectScope('all')}
+                title="Export All: Considers all scheduled classes across the month normally from the timetable."
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  padding: '0.3rem 0.45rem',
+                  borderRadius: 'var(--radius-xs, 4px)',
+                  border: exportScope === 'all'
+                    ? '1.5px solid var(--primary-600, #4f46e5)'
+                    : '1px solid var(--border-default, #cbd5e1)',
+                  backgroundColor: exportScope === 'all'
+                    ? 'var(--bg-surface, #ffffff)'
+                    : 'transparent',
+                  color: exportScope === 'all'
+                    ? 'var(--primary-700, #1d4ed8)'
+                    : 'var(--text-secondary, #475569)',
+                  fontSize: '0.69rem',
+                  fontWeight: exportScope === 'all' ? 700 : 500,
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  boxShadow: exportScope === 'all' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  transition: 'all 0.12s ease',
+                }}
+              >
+                <span style={{ fontSize: '11px', flexShrink: 0 }}>📅</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  Export All
+                </span>
+              </button>
             </div>
           </div>
 

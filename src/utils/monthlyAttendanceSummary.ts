@@ -33,6 +33,8 @@ export interface StudentMonthlySummaryRow {
   overallConducted: number;
 }
 
+export type ExportScope = 'all' | 'selective';
+
 export interface MonthlyAttendanceMatrix {
   academicYear: string;
   selectedYear: number;
@@ -40,6 +42,7 @@ export interface MonthlyAttendanceMatrix {
   monthGroups: MonthSummaryColumnGroup[];
   allSubjects: string[];
   students: StudentMonthlySummaryRow[];
+  exportScope?: ExportScope;
   overallStats: {
     totalStudents: number;
     totalConductedClasses: number;
@@ -63,6 +66,7 @@ export interface ComputeMonthlyAttendanceParams {
   startMonthIndex?: number; // 0 to 11
   endMonthIndex?: number; // 0 to 11
   subjectFilter?: string[]; // If non-empty, only include these subjects
+  exportScope?: ExportScope; // 'all' = full timetable month, 'selective' = only marked (P/A) classes
 }
 
 /**
@@ -118,11 +122,57 @@ export function extractUniqueSubjectNames(
 }
 
 /**
+ * Determines whether a specific subject on a specific date was actually conducted and marked
+ * with at least one Present or Absent record.
+ */
+export function isSubjectMarkedOnDate(
+  dateStr: string,
+  subjectId: string,
+  subjectName: string,
+  savedDailyAttendance?: DailyAttendanceMap,
+  attendanceRecords?: AttendanceRecord[]
+): boolean {
+  // Check savedDailyAttendance
+  const daySaved = savedDailyAttendance?.[dateStr];
+  if (daySaved) {
+    for (const personMarks of Object.values(daySaved)) {
+      if (personMarks) {
+        if (subjectId && personMarks[subjectId] !== undefined) return true;
+        if (subjectName && personMarks[subjectName] !== undefined) return true;
+        if (subjectName) {
+          const subLower = subjectName.toLowerCase();
+          for (const [key, val] of Object.entries(personMarks)) {
+            if (val !== undefined && key.toLowerCase() === subLower) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Check attendanceRecords
+  if (attendanceRecords && attendanceRecords.length > 0) {
+    const subLower = subjectName.toLowerCase();
+    for (const r of attendanceRecords) {
+      if (r.date === dateStr && r.className && r.className.trim().toLowerCase() === subLower) {
+        if (r.status === 'Present' || r.status === 'Absent') {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * Computes scheduled conducted classes for each subject in a given month.
  * Strictly respects:
  * - timetable schedule
  * - holidays & no-class days (noClassDates)
  * - non-scheduled days (e.g. Sunday or days with no classes)
+ * - exportScope: 'all' (all scheduled timetable days) vs 'selective' (only dates/subjects marked with P or A)
  */
 export function computeMonthConductedClasses(params: {
   year: number;
@@ -131,11 +181,24 @@ export function computeMonthConductedClasses(params: {
   weeklyTimetable?: WeeklyTimetable;
   dateScheduleOverrides?: Record<string, string[]>;
   noClassDates?: string[];
+  exportScope?: ExportScope;
+  savedDailyAttendance?: DailyAttendanceMap;
+  attendanceRecords?: AttendanceRecord[];
 }): {
   conductedBySubject: Record<string, number>;
   totalConducted: number;
 } {
-  const { year, monthIndex, subjects, weeklyTimetable, dateScheduleOverrides, noClassDates = [] } = params;
+  const {
+    year,
+    monthIndex,
+    subjects,
+    weeklyTimetable,
+    dateScheduleOverrides,
+    noClassDates = [],
+    exportScope = 'all',
+    savedDailyAttendance,
+    attendanceRecords,
+  } = params;
   const holidays = new Set(noClassDates);
   const daysInMonth = getDaysInMonth(year, monthIndex);
 
@@ -157,6 +220,20 @@ export function computeMonthConductedClasses(params: {
     for (const sub of scheduled) {
       const subName = sub.name ? sub.name.trim() : '';
       if (subName && conductedBySubject[subName] !== undefined) {
+        if (exportScope === 'selective') {
+          const wasMarked = isSubjectMarkedOnDate(
+            dateStr,
+            sub.id,
+            subName,
+            savedDailyAttendance,
+            attendanceRecords
+          );
+          if (!wasMarked) {
+            // In selective mode, skip classes that were not marked
+            continue;
+          }
+        }
+
         conductedBySubject[subName] += 1;
         totalConducted += 1;
       }
@@ -182,6 +259,7 @@ export function computeMonthlyAttendanceMatrix(params: ComputeMonthlyAttendanceP
     startMonthIndex = 0,
     endMonthIndex = 11,
     subjectFilter,
+    exportScope = 'all',
   } = params;
 
   const validStartMonth = Math.max(0, Math.min(11, startMonthIndex));
@@ -207,6 +285,9 @@ export function computeMonthlyAttendanceMatrix(params: ComputeMonthlyAttendanceP
       weeklyTimetable,
       dateScheduleOverrides,
       noClassDates,
+      exportScope,
+      savedDailyAttendance,
+      attendanceRecords,
     });
 
     const monthSubjects: MonthSummarySubject[] = activeSubjects.map((s) => ({
@@ -325,6 +406,17 @@ export function computeMonthlyAttendanceMatrix(params: ComputeMonthlyAttendanceP
           const subName = sub.name ? sub.name.trim() : '';
           if (!subName || attendedBySubject[subName] === undefined) continue;
 
+          if (exportScope === 'selective') {
+            const wasMarked = isSubjectMarkedOnDate(
+              dateStr,
+              sub.id,
+              subName,
+              savedDailyAttendance,
+              attendanceRecords
+            );
+            if (!wasMarked) continue;
+          }
+
           const key = `${dateStr}_${subName.toLowerCase()}`;
           if (studentAttendanceMap.get(key) === 'Present') {
             attendedBySubject[subName] = (attendedBySubject[subName] || 0) + 1;
@@ -417,6 +509,7 @@ export function computeMonthlyAttendanceMatrix(params: ComputeMonthlyAttendanceP
     monthGroups,
     allSubjects: activeSubjects,
     students: studentRows,
+    exportScope,
     overallStats: {
       totalStudents: people.length,
       totalConductedClasses: monthGroups.reduce((acc, g) => acc + g.totalClasses, 0),

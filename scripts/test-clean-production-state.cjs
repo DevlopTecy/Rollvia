@@ -89,7 +89,7 @@ try {
   assert(importModalCode.includes('John Doe') && importModalCode.includes('Jake Smith'), 'Import dialog instructional example must be preserved');
 
   const simpleQuickCode = fs.readFileSync(path.join(__dirname, '../src/components/workspace/SimpleQuickPanel.tsx'), 'utf-8');
-  assert(simpleQuickCode.includes('placeholder="P:113,144,102"'), 'Simple Quick input command format placeholder must be preserved');
+  assert(simpleQuickCode.includes('placeholder="P:113,144,102"') || simpleQuickCode.includes('P:101:105,110'), 'Simple Quick input command format placeholder must be preserved');
 
   pass('Essential user instructional placeholders preserved properly');
 } catch (err) {

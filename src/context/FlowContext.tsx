@@ -1367,89 +1367,137 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const uniqueDates = Array.from(new Set(readRes.records.map((r) => r.date))).sort();
 
       setSessionState((prev) => {
-        // Map from existing roster to preserve internal IDs when possible
-        const prevByRoll = new Map<string, Person>();
-        const prevByName = new Map<string, Person>();
-        for (const p of prev.people || []) {
-          if (p.rollNumber) prevByRoll.set(p.rollNumber.trim().toLowerCase(), p);
-          if (p.name) prevByName.set(p.name.trim().toLowerCase(), p);
-        }
-
+        // Build roster strictly from the opened workbook to avoid collisions with prior workspace data
         const peopleMap = new Map<string, Person>();
-        for (const p of prev.people || []) {
-          peopleMap.set(p.id, p);
+        const orderedPeople: Person[] = [];
+
+        const addOrUpdatePerson = (p: Person) => {
+          const key = (p.rollNumber ? p.rollNumber.trim().toLowerCase() : '') || p.id.trim().toLowerCase();
+          const existing = peopleMap.get(key);
+          if (existing) {
+            if (p.name && (!existing.name || existing.name === 'Unnamed Student' || existing.name === 'Unnamed')) {
+              existing.name = p.name;
+            }
+            if (p.rollNumber && !existing.rollNumber) {
+              existing.rollNumber = p.rollNumber;
+            }
+            if (p.phone && !existing.phone) existing.phone = p.phone;
+            if (p.email && !existing.email) existing.email = p.email;
+          } else {
+            peopleMap.set(key, p);
+            if (p.id) peopleMap.set(p.id.toLowerCase(), p);
+            if (p.rollNumber) peopleMap.set(p.rollNumber.trim().toLowerCase(), p);
+            orderedPeople.push(p);
+          }
+        };
+
+        if (readRes.roster && readRes.roster.length > 0) {
+          for (const ros of readRes.roster) {
+            addOrUpdatePerson(ros);
+          }
         }
 
-        const loadedDailyAttendance: Record<string, Record<string, Record<string, boolean>>> = {};
-
+        // Also ensure any students in records are included in the roster if not in readRes.roster
         for (const rec of readRes.records) {
-          const matched =
-            (rec.rollNumber && prevByRoll.get(rec.rollNumber.trim().toLowerCase())) ||
-            (rec.personName && prevByName.get(rec.personName.trim().toLowerCase()));
-
-          const studentId = matched ? matched.id : rec.personId;
-          const studentRoll = matched ? matched.rollNumber : (rec.rollNumber || rec.personId);
-          const studentName = matched ? matched.name : rec.personName;
-
-          if (!peopleMap.has(studentId)) {
-            peopleMap.set(studentId, {
-              id: studentId,
-              name: studentName,
-              rollNumber: studentRoll,
+          const sRoll = rec.rollNumber && !String(rec.rollNumber).startsWith('p_') ? String(rec.rollNumber).trim() : '';
+          const sName = rec.personName ? String(rec.personName).trim() : '';
+          const sId = rec.personId ? String(rec.personId).trim() : (sRoll || `p_${orderedPeople.length + 1}`);
+          const key = (sRoll ? sRoll.toLowerCase() : '') || sId.toLowerCase();
+          if (!peopleMap.has(key)) {
+            addOrUpdatePerson({
+              id: sId,
+              name: sName || 'Unnamed Student',
+              rollNumber: sRoll,
             });
           }
+        }
 
+        const workbookPeople = orderedPeople.length > 0 ? orderedPeople : prev.people;
+        savePersistedRoster(workbookPeople);
+
+        // Build loadedDailyAttendance
+        const loadedDailyAttendance: Record<string, Record<string, Record<string, boolean>>> = {};
+        for (const rec of readRes.records) {
           if (!loadedDailyAttendance[rec.date]) {
             loadedDailyAttendance[rec.date] = {};
           }
-          if (!loadedDailyAttendance[rec.date][studentId]) {
-            loadedDailyAttendance[rec.date][studentId] = {};
+          const pKey = (rec.rollNumber ? rec.rollNumber.trim().toLowerCase() : '') || (rec.personId ? rec.personId.trim().toLowerCase() : '');
+          const matchedPerson = peopleMap.get(pKey);
+          const pId = matchedPerson ? matchedPerson.id : (rec.personId || rec.rollNumber || 'unknown');
+          const pRoll = matchedPerson?.rollNumber || rec.rollNumber;
+
+          if (!loadedDailyAttendance[rec.date][pId]) {
+            loadedDailyAttendance[rec.date][pId] = {};
           }
           const isPresent = rec.status === 'Present';
-          loadedDailyAttendance[rec.date][studentId][rec.className] = isPresent;
+          loadedDailyAttendance[rec.date][pId][rec.className] = isPresent;
+
+          if (pRoll && pRoll !== pId) {
+            if (!loadedDailyAttendance[rec.date][pRoll]) {
+              loadedDailyAttendance[rec.date][pRoll] = {};
+            }
+            loadedDailyAttendance[rec.date][pRoll][rec.className] = isPresent;
+          }
         }
 
-        const loadedPeople = Array.from(peopleMap.values());
-        const mergedDaily: Record<string, Record<string, Record<string, boolean>>> = {
-          ...(prev.savedDailyAttendance || {}),
+        // Date Schedule Overrides
+        const mergedDateOverrides: Record<string, string[]> = {
+          ...(readRes.dateScheduleOverrides || {}),
+        };
+        for (const dateStr of uniqueDates) {
+          if (!mergedDateOverrides[dateStr] || mergedDateOverrides[dateStr].length === 0) {
+            const distinctClasses = Array.from(
+              new Set(readRes.records.filter((r) => r.date === dateStr).map((r) => r.className))
+            );
+            if (distinctClasses.length > 0) {
+              mergedDateOverrides[dateStr] = distinctClasses;
+            }
+          }
+        }
+
+        // Timetable
+        const baseTimetable = prev.weeklyTimetable || INITIAL_WEEKLY_TIMETABLE;
+        const mergedTimetable: WeeklyTimetable = {
+          Monday: (readRes.weeklyTimetable?.Monday as TimetableSubject[]) || baseTimetable.Monday || [],
+          Tuesday: (readRes.weeklyTimetable?.Tuesday as TimetableSubject[]) || baseTimetable.Tuesday || [],
+          Wednesday: (readRes.weeklyTimetable?.Wednesday as TimetableSubject[]) || baseTimetable.Wednesday || [],
+          Thursday: (readRes.weeklyTimetable?.Thursday as TimetableSubject[]) || baseTimetable.Thursday || [],
+          Friday: (readRes.weeklyTimetable?.Friday as TimetableSubject[]) || baseTimetable.Friday || [],
+          Saturday: (readRes.weeklyTimetable?.Saturday as TimetableSubject[]) || baseTimetable.Saturday || [],
+          Sunday: (readRes.weeklyTimetable?.Sunday as TimetableSubject[]) || baseTimetable.Sunday || [],
         };
 
-        const tb = prev.weeklyTimetable || INITIAL_WEEKLY_TIMETABLE;
+        // Align daily attendance records with subject IDs and names
         for (const dateStr of uniqueDates) {
-          mergedDaily[dateStr] = { ...(mergedDaily[dateStr] || {}), ...(loadedDailyAttendance[dateStr] || {}) };
-          const scheduledSubs = getSubjectsForDate(dateStr, tb);
-          for (const p of loadedPeople) {
-            const pDay = mergedDaily[dateStr]?.[p.id];
+          const scheduledSubs = getSubjectsForDate(dateStr, mergedTimetable, mergedDateOverrides);
+          for (const p of workbookPeople) {
+            const pDay = loadedDailyAttendance[dateStr]?.[p.id];
             if (pDay) {
               for (const sub of scheduledSubs) {
                 if (pDay[sub.name] !== undefined) {
                   pDay[sub.id] = pDay[sub.name];
+                }
+                const foundKey = Object.keys(pDay).find((k) => k.toLowerCase() === sub.name.toLowerCase());
+                if (foundKey && pDay[foundKey] !== undefined) {
+                  pDay[sub.id] = pDay[foundKey];
+                  pDay[sub.name] = pDay[foundKey];
                 }
               }
             }
           }
         }
 
-        if (readRes.roster && readRes.roster.length > 0) {
-          for (const ros of readRes.roster) {
-            const existing = peopleMap.get(ros.id);
-            if (existing) {
-              peopleMap.set(ros.id, {
-                ...existing,
-                name: ros.name || existing.name,
-                rollNumber: ros.rollNumber || existing.rollNumber,
-                phone: ros.phone || existing.phone,
-                email: ros.email || existing.email,
-              });
-            } else {
-              peopleMap.set(ros.id, ros);
-            }
-          }
-        }
+        const targetYear = readRes.detectedYear ?? prev.selectedYear;
+        const targetMonthIndex = readRes.detectedMonthIndex ?? prev.selectedMonthIndex;
 
-        const updatedPeople = loadedPeople.length > 0 ? loadedPeople : prev.people;
-        savePersistedRoster(updatedPeople);
-        const mergedDates = Array.from(new Set([...(prev.savedDates || []), ...uniqueDates]));
+        // Find initial activeDate for that month if available
+        const datesInTargetMonth = uniqueDates.filter((d) => {
+          const [y, m] = d.split('-').map(Number);
+          return y === targetYear && m - 1 === targetMonthIndex;
+        });
+        const initialActiveDate = datesInTargetMonth.length > 0
+          ? datesInTargetMonth[0]
+          : `${targetYear}-${String(targetMonthIndex + 1).padStart(2, '0')}-01`;
 
         return {
           ...prev,
@@ -1458,12 +1506,17 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           excelFileName: fileName,
           excelExistingRecordsCount: readRes.records.length,
           excelWorkbookSheets: readRes.sheetNames,
-          people: updatedPeople,
-          peopleCount: updatedPeople.length,
-          members: syncPeopleToMembers(updatedPeople),
-          savedDates: mergedDates,
-          savedDailyAttendance: mergedDaily,
+          people: workbookPeople,
+          peopleCount: workbookPeople.length,
+          members: syncPeopleToMembers(workbookPeople),
+          weeklyTimetable: mergedTimetable,
+          dateScheduleOverrides: mergedDateOverrides,
+          savedDates: uniqueDates,
+          savedDailyAttendance: loadedDailyAttendance,
           attendanceRecords: readRes.records,
+          selectedYear: targetYear,
+          selectedMonthIndex: targetMonthIndex,
+          activeDate: initialActiveDate,
         };
       });
 

@@ -47,6 +47,10 @@ export interface StorageReadResult {
   message: string;
   error?: string;
   roster?: Person[];
+  dateScheduleOverrides?: Record<string, string[]>;
+  weeklyTimetable?: Record<string, { id: string; name: string }[]>;
+  detectedYear?: number;
+  detectedMonthIndex?: number;
 }
 
 /**

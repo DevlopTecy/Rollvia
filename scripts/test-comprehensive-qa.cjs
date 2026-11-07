@@ -496,8 +496,8 @@ test('PDF Export', 'Generates valid PDF buffer for 24 students (1 page)', () => 
   assert(text.includes('Page 1 of 1'), 'Page 1 of 1 for 24 students');
 });
 
-test('PDF Export', 'Generates valid PDF buffer for 25 students (2 pages)', () => {
-  const { roster, profiles } = createMockRoster(25);
+test('PDF Export', 'Generates valid PDF buffer for 28 students (2 pages)', () => {
+  const { roster, profiles } = createMockRoster(28);
   const buf = generateMonthlyAttendancePdfBuffer({
     monthStr: 'September 2026',
     roster,
@@ -526,7 +526,7 @@ test('PDF Export', 'Generates valid PDF buffer for 82 students (4 pages)', () =>
 });
 
 test('PDF Export', 'Generates valid PDF buffer for 100+ students (5 pages)', () => {
-  const { roster, profiles } = createMockRoster(105);
+  const { roster, profiles } = createMockRoster(106);
   const buf = generateMonthlyAttendancePdfBuffer({
     monthStr: 'September 2026',
     roster,

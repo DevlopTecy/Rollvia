@@ -30,6 +30,20 @@ export const RAW_DATA_SHEET_NAME = '_AttendanceData';
  */
 export const ROSTER_SHEET_NAME = '_Roster';
 
+/**
+ * Hidden worksheet storing timetable and date schedule overrides metadata losslessly.
+ */
+export const METADATA_SHEET_NAME = '_Metadata';
+
+export interface MonthlyMatrixParseResult {
+  records: AttendanceRecord[];
+  roster: Person[];
+  dateScheduleOverrides: Record<string, string[]>;
+  weeklyTimetable: Record<string, { id: string; name: string }[]>;
+  year?: number;
+  monthIndex?: number;
+}
+
 const MONTH_NAMES = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
@@ -262,7 +276,28 @@ export class ExcelAdapter implements StorageAdapter {
       const workbook = XLSX.read(fileBuffer, { type: 'array' });
       const sheetNames = workbook.SheetNames || [];
 
-      // Optional: Check '_Roster' hidden sheet for full student roster
+      // 1. Check '_Metadata' hidden sheet
+      let metaTimetable: Record<string, { id: string; name: string }[]> | undefined;
+      let metaDateOverrides: Record<string, string[]> | undefined;
+      if (sheetNames.includes(METADATA_SHEET_NAME)) {
+        const wsMeta = workbook.Sheets[METADATA_SHEET_NAME];
+        if (wsMeta) {
+          const metaRows = XLSX.utils.sheet_to_json<(string | number)[]>(wsMeta, { header: 1 });
+          if (metaRows.length > 1 && metaRows[1] && metaRows[1][0]) {
+            try {
+              const parsed = JSON.parse(String(metaRows[1][0]));
+              if (parsed && typeof parsed === 'object') {
+                if (parsed.weeklyTimetable) metaTimetable = parsed.weeklyTimetable;
+                if (parsed.dateScheduleOverrides) metaDateOverrides = parsed.dateScheduleOverrides;
+              }
+            } catch {
+              // Ignore malformed metadata
+            }
+          }
+        }
+      }
+
+      // 2. Check '_Roster' hidden sheet for full student roster
       let existingRoster: Person[] | undefined;
       if (sheetNames.includes(ROSTER_SHEET_NAME)) {
         const wsRoster = workbook.Sheets[ROSTER_SHEET_NAME];
@@ -273,9 +308,11 @@ export class ExcelAdapter implements StorageAdapter {
             for (let r = 1; r < rosterRows.length; r++) {
               const row = rosterRows[r];
               if (row && (row[0] || row[1])) {
+                let roll = String(row[0] || '').trim();
+                if (roll.endsWith('.0')) roll = roll.slice(0, -2);
                 existingRoster.push({
-                  id: String(row[4] || `p_${r}`),
-                  rollNumber: String(row[0] || '').trim(),
+                  id: String(row[4] || roll || `p_${r}`).trim(),
+                  rollNumber: roll,
                   name: String(row[1] || '').trim(),
                   phone: row[2] ? String(row[2]).trim() : '',
                   email: row[3] ? String(row[3]).trim() : '',
@@ -286,77 +323,168 @@ export class ExcelAdapter implements StorageAdapter {
         }
       }
 
-      // 1. Check '_AttendanceData' hidden sheet
+      // 3. Check '_AttendanceData' hidden sheet
+      let rawDataRecords: AttendanceRecord[] = [];
       if (sheetNames.includes(RAW_DATA_SHEET_NAME)) {
         const ws = workbook.Sheets[RAW_DATA_SHEET_NAME];
         if (ws) {
           const rawRows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1 });
           if (rawRows.length > 1) {
-            const records = this.parseRawDataSheet(rawRows);
-            const uniqueDates = new Set(records.map((r) => r.date)).size;
-            return {
-              success: true,
-              records,
-              sheetNames,
-              totalRecords: records.length,
-              roster: existingRoster,
-              message: `Found ${records.length} existing records in '${RAW_DATA_SHEET_NAME}' across ${uniqueDates} session date(s).`,
-            };
+            rawDataRecords = this.parseRawDataSheet(rawRows);
           }
         }
       }
 
-      // 2. Check legacy 'Attendance' flat sheet
+      // 4. Check legacy 'Attendance' flat sheet
+      let legacyRecords: AttendanceRecord[] = [];
       if (sheetNames.includes(ATTENDANCE_SHEET_NAME)) {
         const ws = workbook.Sheets[ATTENDANCE_SHEET_NAME];
         if (ws) {
           const rawRows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1 });
           if (rawRows.length > 1) {
-            const records = this.parseLegacyAttendanceSheet(rawRows);
-            const uniqueDates = new Set(records.map((r) => r.date)).size;
-            return {
-              success: true,
-              records,
-              sheetNames,
-              totalRecords: records.length,
-              roster: existingRoster,
-              message: `Found ${records.length} existing records in legacy '${ATTENDANCE_SHEET_NAME}' sheet across ${uniqueDates} session date(s).`,
-            };
+            legacyRecords = this.parseLegacyAttendanceSheet(rawRows);
           }
         }
       }
 
-      // 3. Check any 'Attendance [Month]' structured monthly matrix sheet
+      // 5. Scan all structured monthly sheets ('Attendance July', etc.)
+      const monthlyRecords: AttendanceRecord[] = [];
+      const monthlyRosterMap = new Map<string, Person>();
+      const monthlyDateOverrides: Record<string, string[]> = {};
+      const monthlyTimetable: Record<string, { id: string; name: string }[]> = {};
+      let detectedYear: number | undefined;
+      let detectedMonthIndex: number | undefined;
+
       for (const sName of sheetNames) {
-        if (sName.startsWith('Attendance ') && sName !== ATTENDANCE_SHEET_NAME) {
+        const isMonthly =
+          ((sName.startsWith('Attendance ') && sName !== ATTENDANCE_SHEET_NAME && sName !== RAW_DATA_SHEET_NAME) ||
+            MONTH_NAMES.some((m) => sName.toLowerCase().includes(m.toLowerCase()))) &&
+          sName !== SEARCH_SHEET_NAME &&
+          sName !== ROSTER_SHEET_NAME &&
+          sName !== METADATA_SHEET_NAME;
+
+        if (isMonthly) {
           const ws = workbook.Sheets[sName];
           if (ws) {
-            const matrixRows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1 });
-            if (matrixRows.length >= 5) {
-              const records = this.parseMonthlyMatrixSheet(ws, sName);
-              if (records.length > 0) {
-                const uniqueDates = new Set(records.map((r) => r.date)).size;
-                return {
-                  success: true,
-                  records,
-                  sheetNames,
-                  totalRecords: records.length,
-                  roster: existingRoster,
-                  message: `Found ${records.length} existing records reconstructed from '${sName}' sheet across ${uniqueDates} session date(s).`,
-                };
+            const parsed = this.parseMonthlyMatrixSheet(ws, sName);
+            if (
+              parsed.records.length > 0 ||
+              parsed.roster.length > 0 ||
+              Object.keys(parsed.dateScheduleOverrides).length > 0
+            ) {
+              monthlyRecords.push(...parsed.records);
+              for (const p of parsed.roster) {
+                const key = (p.rollNumber ? p.rollNumber.toLowerCase() : '') || p.id.toLowerCase();
+                if (!monthlyRosterMap.has(key)) {
+                  monthlyRosterMap.set(key, p);
+                }
+              }
+              for (const [dateStr, subs] of Object.entries(parsed.dateScheduleOverrides)) {
+                if (!monthlyDateOverrides[dateStr]) {
+                  monthlyDateOverrides[dateStr] = [];
+                }
+                for (const s of subs) {
+                  if (!monthlyDateOverrides[dateStr].includes(s)) {
+                    monthlyDateOverrides[dateStr].push(s);
+                  }
+                }
+              }
+              for (const [wDay, subs] of Object.entries(parsed.weeklyTimetable)) {
+                if (!monthlyTimetable[wDay]) {
+                  monthlyTimetable[wDay] = [];
+                }
+                for (const sub of subs) {
+                  if (!monthlyTimetable[wDay].some((existing) => existing.name.toLowerCase() === sub.name.toLowerCase())) {
+                    monthlyTimetable[wDay].push(sub);
+                  }
+                }
+              }
+              if (detectedYear === undefined && parsed.year) {
+                detectedYear = parsed.year;
+              }
+              if (detectedMonthIndex === undefined && parsed.monthIndex !== undefined) {
+                detectedMonthIndex = parsed.monthIndex;
               }
             }
           }
         }
       }
 
+      // 6. Merge records
+      const recordsMap = new Map<string, AttendanceRecord>();
+      const makeKey = (rec: AttendanceRecord) => {
+        const rDate = String(rec.date || '').trim().toLowerCase();
+        const rPerson = String(rec.rollNumber || rec.personId || '').trim().toLowerCase();
+        const rClass = String(rec.className || '').trim().toLowerCase();
+        return `${rDate}|${rPerson}|${rClass}`;
+      };
+
+      for (const r of monthlyRecords) recordsMap.set(makeKey(r), r);
+      for (const r of legacyRecords) recordsMap.set(makeKey(r), r);
+      for (const r of rawDataRecords) recordsMap.set(makeKey(r), r);
+
+      const combinedRecords = Array.from(recordsMap.values());
+
+      // 7. Resolve final roster
+      let finalRoster = existingRoster && existingRoster.length > 0 ? existingRoster : Array.from(monthlyRosterMap.values());
+      if (finalRoster.length === 0 && combinedRecords.length > 0) {
+        const rosterSet = new Map<string, Person>();
+        for (const r of combinedRecords) {
+          const key = (r.rollNumber ? r.rollNumber.toLowerCase() : '') || r.personId.toLowerCase();
+          if (!rosterSet.has(key)) {
+            rosterSet.set(key, {
+              id: r.personId || r.rollNumber || `p_${rosterSet.size + 1}`,
+              name: r.personName || 'Unnamed',
+              rollNumber: r.rollNumber || '',
+            });
+          }
+        }
+        finalRoster = Array.from(rosterSet.values());
+      }
+
+      // 8. Combine dateScheduleOverrides and timetable
+      const combinedDateOverrides: Record<string, string[]> = {
+        ...monthlyDateOverrides,
+        ...(metaDateOverrides || {}),
+      };
+
+      for (const rec of combinedRecords) {
+        if (!combinedDateOverrides[rec.date]) {
+          combinedDateOverrides[rec.date] = [];
+        }
+        if (!combinedDateOverrides[rec.date].includes(rec.className)) {
+          combinedDateOverrides[rec.date].push(rec.className);
+        }
+      }
+
+      const combinedTimetable: Record<string, { id: string; name: string }[]> = {
+        ...monthlyTimetable,
+        ...(metaTimetable || {}),
+      };
+
+      if (detectedYear === undefined && combinedRecords.length > 0) {
+        const dates = combinedRecords.map((r) => r.date).filter(Boolean).sort();
+        if (dates.length > 0) {
+          const latest = dates[dates.length - 1];
+          const [y, m] = latest.split('-').map(Number);
+          if (y) detectedYear = y;
+          if (m) detectedMonthIndex = m - 1;
+        }
+      }
+
+      const uniqueDates = Array.from(new Set(combinedRecords.map((r) => r.date)));
+
       return {
         success: true,
-        records: [],
+        records: combinedRecords,
         sheetNames,
-        totalRecords: 0,
-        roster: existingRoster,
-        message: `Workbook contains ${sheetNames.length} sheet(s) [${sheetNames.join(', ')}]. A new monthly attendance sheet will be created.`,
+        totalRecords: combinedRecords.length,
+        roster: finalRoster,
+        dateScheduleOverrides: combinedDateOverrides,
+        weeklyTimetable: combinedTimetable,
+        detectedYear,
+        detectedMonthIndex,
+        message: `Found ${combinedRecords.length} records and ${finalRoster.length} students across ${uniqueDates.length} session date(s).`,
       };
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
@@ -998,6 +1126,7 @@ export class ExcelAdapter implements StorageAdapter {
           name !== SEARCH_SHEET_NAME &&
           name !== RAW_DATA_SHEET_NAME &&
           name !== ROSTER_SHEET_NAME &&
+          name !== METADATA_SHEET_NAME &&
           name !== ATTENDANCE_SHEET_NAME
         ) {
           const s = existingWorkbook.Sheets[name];
@@ -1014,6 +1143,15 @@ export class ExcelAdapter implements StorageAdapter {
     // 5. Roster sheet (Hidden)
     XLSX.utils.book_append_sheet(newWb, wsRoster, ROSTER_SHEET_NAME);
 
+    // 6. Metadata sheet (Hidden)
+    const metaPayload = {
+      version: 1,
+      weeklyTimetable: dataset.metadata?.weeklyTimetable,
+      dateScheduleOverrides: dataset.metadata?.dateScheduleOverrides,
+    };
+    const wsMetadata = XLSX.utils.aoa_to_sheet([['Metadata JSON'], [JSON.stringify(metaPayload)]]);
+    XLSX.utils.book_append_sheet(newWb, wsMetadata, METADATA_SHEET_NAME);
+
     // Set Hidden sheets
     if (!newWb.Workbook) newWb.Workbook = { Sheets: [] };
     if (!newWb.Workbook.Sheets) newWb.Workbook.Sheets = [];
@@ -1026,6 +1164,11 @@ export class ExcelAdapter implements StorageAdapter {
     const rosterSheetIndex = newWb.SheetNames.indexOf(ROSTER_SHEET_NAME);
     if (rosterSheetIndex >= 0) {
       newWb.Workbook.Sheets[rosterSheetIndex] = { Hidden: 1 };
+    }
+
+    const metaSheetIndex = newWb.SheetNames.indexOf(METADATA_SHEET_NAME);
+    if (metaSheetIndex >= 0) {
+      newWb.Workbook.Sheets[metaSheetIndex] = { Hidden: 1 };
     }
 
     return newWb;
@@ -1153,57 +1296,254 @@ export class ExcelAdapter implements StorageAdapter {
   }
 
   /**
-   * Parses structured monthly matrix sheet ('Attendance September') into AttendanceRecord[].
+   * Parses structured monthly matrix sheet ('Attendance July', 'Attendance September', etc.)
+   * into AttendanceRecord[], Person[] roster, dateScheduleOverrides, and weeklyTimetable.
    */
-  private parseMonthlyMatrixSheet(ws: XLSX.WorkSheet, sheetName: string): AttendanceRecord[] {
+  private parseMonthlyMatrixSheet(ws: XLSX.WorkSheet, sheetName: string): MonthlyMatrixParseResult {
+    const emptyResult: MonthlyMatrixParseResult = {
+      records: [],
+      roster: [],
+      dateScheduleOverrides: {},
+      weeklyTimetable: {},
+    };
+
     const rawRows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1 });
-    if (rawRows.length < 5) return [];
+    if (!rawRows || rawRows.length < 3) return emptyResult;
 
-    const monthParts = sheetName.replace(/^Attendance\s*/i, '').trim().split(/\s+/);
-    const mName = monthParts[0] || 'September';
-    const yNum = monthParts[1] ? parseInt(monthParts[1], 10) : new Date().getFullYear();
-    const mIdx = MONTH_NAMES.findIndex((m) => m.toLowerCase() === mName.toLowerCase());
-    const resolvedMonthIdx = mIdx >= 0 ? mIdx : 8;
+    // 1. Resolve month and year from sheetName and/or top banner rows
+    let resolvedMonthIdx = -1;
+    let resolvedYear = new Date().getFullYear();
 
-    const dateRow = rawRows[1] || [];
-    const subjectRow = rawRows[3] || [];
+    const sheetMonthMatch = sheetName.match(
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/i
+    );
+    if (sheetMonthMatch) {
+      const mStr = sheetMonthMatch[1].toLowerCase().slice(0, 3);
+      const mIdx = MONTH_NAMES.findIndex((m) => m.toLowerCase().startsWith(mStr));
+      if (mIdx >= 0) resolvedMonthIdx = mIdx;
+    }
+    const sheetYearMatch = sheetName.match(/\b(20\d\d)\b/);
+    if (sheetYearMatch) {
+      resolvedYear = parseInt(sheetYearMatch[1], 10);
+    }
 
-    // Map columns to their resolved date and subject
-    const columnMeta: { col: number; dateStr: string; subject: string }[] = [];
-    let activeDateStr = '';
-
-    for (let c = 3; c < dateRow.length; c++) {
-      const dateCell = String(dateRow[c] || '').trim();
-      if (dateCell && !dateCell.toLowerCase().includes('total') && !dateCell.toLowerCase().includes('percent')) {
-        const dayMatch = dateCell.match(/^(\d{1,2})/);
-        if (dayMatch) {
-          const d = parseInt(dayMatch[1], 10);
-          activeDateStr = `${yNum}-${String(resolvedMonthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    // Inspect top rows (rows 0, 1, 2) for title like 'July 2026'
+    for (let r = 0; r < Math.min(3, rawRows.length); r++) {
+      const row = rawRows[r];
+      if (!row) continue;
+      for (const cell of row) {
+        if (!cell) continue;
+        const cellStr = String(cell).trim();
+        if (resolvedMonthIdx === -1) {
+          const mMatch = cellStr.match(
+            /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\b/i
+          );
+          if (mMatch) {
+            const mStr = mMatch[1].toLowerCase().slice(0, 3);
+            const mIdx = MONTH_NAMES.findIndex((m) => m.toLowerCase().startsWith(mStr));
+            if (mIdx >= 0) resolvedMonthIdx = mIdx;
+          }
         }
-      }
-
-      const subject = String(subjectRow[c] || '').trim();
-      if (activeDateStr && subject && !subject.toLowerCase().includes('total') && !subject.toLowerCase().includes('percent')) {
-        columnMeta.push({ col: c, dateStr: activeDateStr, subject });
+        const yMatch = cellStr.match(/\b(20\d\d)\b/);
+        if (yMatch) {
+          resolvedYear = parseInt(yMatch[1], 10);
+        }
       }
     }
 
-    const records: AttendanceRecord[] = [];
-    for (let r = 4; r < rawRows.length; r++) {
+    if (resolvedMonthIdx === -1) {
+      resolvedMonthIdx = 6; // Default to July if unresolvable
+    }
+
+    // 2. Dynamically find first student row
+    let firstStudentRow = -1;
+    for (let r = 0; r < Math.min(15, rawRows.length); r++) {
       const row = rawRows[r];
-      if (!row || row.length < 3) continue;
-      const name = String(row[1] || '').trim();
-      const roll = String(row[2] || '').trim();
+      if (!row || row.length === 0) continue;
+      const col0 = String(row[0] || '').trim();
+      const col1 = String(row[1] || '').trim();
+      const col2 = String(row[2] || '').trim();
+
+      const isSNo1 = col0 === '1' || col0 === '01' || col0 === '1.';
+      const isHeaderCol1 = /^(name|student|s\.?no|roll|candidate|total|percentage)$/i.test(col1);
+
+      if (isSNo1 && col1 && !isHeaderCol1) {
+        firstStudentRow = r;
+        break;
+      }
+
+      if (col1 && !isHeaderCol1 && /^\d{5,}$/.test(col2)) {
+        firstStudentRow = r;
+        break;
+      }
+    }
+
+    if (firstStudentRow === -1) {
+      firstStudentRow = Math.min(4, Math.max(1, rawRows.length - 1));
+    }
+
+    // 3. Identify S.No, Name, Roll No columns from header rows (0 to firstStudentRow - 1)
+    let sNoCol = 0;
+    let nameCol = 1;
+    let rollCol = 2;
+
+    for (let r = 0; r < firstStudentRow; r++) {
+      const row = rawRows[r];
+      if (!row) continue;
+      for (let c = 0; c < Math.min(6, row.length); c++) {
+        const text = String(row[c] || '').trim().toLowerCase();
+        if (/^(s\.?no|sl\.?no|serial|#)$/i.test(text)) sNoCol = c;
+        if (/^(name|student\s*name|candidate\s*name)$/i.test(text)) nameCol = c;
+        if (/^(roll|roll\s*no\.?|reg\s*no\.?|id|student\s*id)$/i.test(text)) rollCol = c;
+      }
+    }
+
+    const subjectStartCol = Math.max(sNoCol, nameCol, rollCol) + 1;
+    const maxCol = Math.max(...rawRows.slice(0, Math.min(firstStudentRow + 5, rawRows.length)).map((r) => (r ? r.length : 0)));
+
+    // 4. Identify dateRowIndex and subjectRowIndex
+    const isDatePattern = (str: string) => {
+      const s = str.trim();
+      if (!s) return false;
+      const lower = s.toLowerCase();
+      if (lower.includes('total') || lower.includes('percent') || lower.includes('class') || lower.includes('name') || lower.includes('roll')) return false;
+      return (
+        /\b\d{1,2}[\s\-/](?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)/i.test(s) ||
+        /\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[\s\-/]\d{1,2}/i.test(s) ||
+        /\b\d{1,2}[/-]\d{1,2}\b/.test(s) ||
+        /\b(Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*[\s\-,]+\d{1,2}\b/i.test(s) ||
+        /^\d{1,2}$/.test(s)
+      );
+    };
+
+    let dateRowIndex = -1;
+    let maxDateMatches = 0;
+
+    for (let r = 0; r < firstStudentRow; r++) {
+      const row = rawRows[r];
+      if (!row) continue;
+      let dateMatches = 0;
+      for (let c = subjectStartCol; c < row.length; c++) {
+        if (isDatePattern(String(row[c] || ''))) {
+          dateMatches++;
+        }
+      }
+      if (dateMatches > maxDateMatches) {
+        maxDateMatches = dateMatches;
+        dateRowIndex = r;
+      }
+    }
+
+    let subjectRowIndex = Math.max(0, firstStudentRow - 1);
+    if (subjectRowIndex === dateRowIndex && dateRowIndex > 0) {
+      subjectRowIndex = dateRowIndex;
+    }
+
+    // 5. Map columns to resolved date and subject
+    const columnMeta: { col: number; dateStr: string; subject: string; weekday: string }[] = [];
+    let activeDateStr = '';
+    let activeWeekday = '';
+
+    const resolveWeekday = (w: string): string => {
+      const lower = w.toLowerCase();
+      if (lower.startsWith('mon')) return 'Monday';
+      if (lower.startsWith('tue')) return 'Tuesday';
+      if (lower.startsWith('wed')) return 'Wednesday';
+      if (lower.startsWith('thu')) return 'Thursday';
+      if (lower.startsWith('fri')) return 'Friday';
+      if (lower.startsWith('sat')) return 'Saturday';
+      if (lower.startsWith('sun')) return 'Sunday';
+      return w;
+    };
+
+    const getWeekdayForDay = (y: number, m: number, d: number): string => {
+      const dt = new Date(y, m, d);
+      const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+      return days[dt.getDay()];
+    };
+
+    for (let c = subjectStartCol; c < maxCol; c++) {
+      // Check for date in dateRowIndex (or any header row above subjectRowIndex)
+      for (let r = 0; r < firstStudentRow; r++) {
+        if (r === subjectRowIndex && firstStudentRow > 1) continue;
+        const cellVal = String(rawRows[r]?.[c] || '').trim();
+        if (cellVal && isDatePattern(cellVal)) {
+          const dayMatch = cellVal.match(/\b(\d{1,2})\b/);
+          if (dayMatch) {
+            const d = parseInt(dayMatch[1], 10);
+            if (d >= 1 && d <= 31) {
+              activeDateStr = `${resolvedYear}-${String(resolvedMonthIdx + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const wMatch = cellVal.match(/\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/i);
+              if (wMatch) {
+                activeWeekday = resolveWeekday(wMatch[1]);
+              } else {
+                activeWeekday = getWeekdayForDay(resolvedYear, resolvedMonthIdx, d);
+              }
+            }
+          }
+        }
+      }
+
+      // Check subject in subjectRowIndex
+      const rawSubject = String(rawRows[subjectRowIndex]?.[c] || '').trim();
+      if (!rawSubject) continue;
+
+      const subLower = rawSubject.toLowerCase();
+      if (
+        subLower.includes('total') ||
+        subLower.includes('percent') ||
+        subLower.includes('absent') ||
+        subLower.includes('present') ||
+        subLower.includes('classes') ||
+        subLower === '%'
+      ) {
+        continue;
+      }
+
+      if (activeDateStr && rawSubject) {
+        columnMeta.push({
+          col: c,
+          dateStr: activeDateStr,
+          subject: rawSubject,
+          weekday: activeWeekday || 'Wednesday',
+        });
+      }
+    }
+
+    // 6. Parse students and attendance records
+    const records: AttendanceRecord[] = [];
+    const roster: Person[] = [];
+
+    for (let r = firstStudentRow; r < rawRows.length; r++) {
+      const row = rawRows[r];
+      if (!row || row.length === 0) continue;
+
+      const name = String(row[nameCol] || '').trim();
+      let roll = String(row[rollCol] || '').trim();
+      if (roll.endsWith('.0')) roll = roll.slice(0, -2);
+
       if (!name && !roll) continue;
+
+      const checkFooter = (name + ' ' + roll).toLowerCase();
+      if (checkFooter.includes('total') || checkFooter.includes('average') || checkFooter.includes('summary')) {
+        continue;
+      }
+
+      const studentId = roll && !roll.startsWith('p_') ? roll : `std_${r - firstStudentRow + 1}`;
+      roster.push({
+        id: studentId,
+        name: name || `Student ${r - firstStudentRow + 1}`,
+        rollNumber: roll,
+      });
 
       for (const cm of columnMeta) {
         const val = String(row[cm.col] || '').trim().toUpperCase();
         if (val === 'P' || val === 'A') {
           records.push({
-            id: `rec_${cm.dateStr}_${roll || name}_${cm.subject}`,
+            id: `rec_${cm.dateStr}_${studentId}_${cm.subject}`,
             date: cm.dateStr,
-            personId: roll || `p_${r}`,
-            personName: name || 'Unnamed',
+            personId: studentId,
+            personName: name,
             rollNumber: roll,
             className: cm.subject,
             status: val === 'P' ? 'Present' : 'Absent',
@@ -1212,7 +1552,38 @@ export class ExcelAdapter implements StorageAdapter {
       }
     }
 
-    return records;
+    // 7. Build dateScheduleOverrides and weeklyTimetable
+    const dateScheduleOverrides: Record<string, string[]> = {};
+    const weeklyTimetable: Record<string, { id: string; name: string }[]> = {};
+
+    for (const cm of columnMeta) {
+      if (!dateScheduleOverrides[cm.dateStr]) {
+        dateScheduleOverrides[cm.dateStr] = [];
+      }
+      if (!dateScheduleOverrides[cm.dateStr].includes(cm.subject)) {
+        dateScheduleOverrides[cm.dateStr].push(cm.subject);
+      }
+
+      const wDay = cm.weekday;
+      if (wDay) {
+        if (!weeklyTimetable[wDay]) {
+          weeklyTimetable[wDay] = [];
+        }
+        if (!weeklyTimetable[wDay].some((s) => s.name.toLowerCase() === cm.subject.toLowerCase())) {
+          const safeId = `sub_${cm.subject.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          weeklyTimetable[wDay].push({ id: safeId, name: cm.subject });
+        }
+      }
+    }
+
+    return {
+      records,
+      roster,
+      dateScheduleOverrides,
+      weeklyTimetable,
+      year: resolvedYear,
+      monthIndex: resolvedMonthIdx,
+    };
   }
 
   // In-memory buffer store for testing or browser sandbox fallback

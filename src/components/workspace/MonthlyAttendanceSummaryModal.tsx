@@ -22,6 +22,8 @@ import {
 } from '../../utils/monthlyAttendanceSummary';
 import { downloadMonthlySummaryExcel } from '../../utils/monthlySummaryExcelExport';
 import { downloadMonthlySummaryPdf } from '../../utils/monthlySummaryPdfExport';
+import { downloadCollegeSignatureSheetPdf } from '../../utils/collegeSignatureSheetExport';
+import { FileCheck } from 'lucide-react';
 
 interface MonthlyAttendanceSummaryModalProps {
   isOpen: boolean;
@@ -58,6 +60,7 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
   const [searchQuery, setSearchQuery] = useState('');
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const [isExportingSigPdf, setIsExportingSigPdf] = useState(false);
   const [exportNotice, setExportNotice] = useState<{ message: string; isError: boolean } | null>(null);
 
   const [exportScope, setExportScope] = useState<ExportScope>(() => {
@@ -173,6 +176,26 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
       setExportNotice({ message: 'Failed to generate PDF export.', isError: true });
     } finally {
       setIsExportingPdf(false);
+    }
+  };
+
+  // University Signature Sheet Handler
+  const handleExportSignatureSheet = () => {
+    try {
+      setIsExportingSigPdf(true);
+      setExportNotice(null);
+      downloadCollegeSignatureSheetPdf(matrix, {
+        institutionName,
+        departmentName,
+        academicYear: academicYear || String(selectedYear),
+        minimumAttendanceThreshold: 75,
+      });
+      setExportNotice({ message: 'University Signature Sheet PDF downloaded.', isError: false });
+      setTimeout(() => setExportNotice(null), 3500);
+    } catch {
+      setExportNotice({ message: 'Failed to generate University Signature Sheet.', isError: true });
+    } finally {
+      setIsExportingSigPdf(false);
     }
   };
 
@@ -312,6 +335,22 @@ export const MonthlyAttendanceSummaryModal: React.FC<MonthlyAttendanceSummaryMod
             >
               <FileText size={13} />
               {isExportingPdf ? 'Exporting...' : 'Export PDF'}
+            </button>
+
+            {/* University Signature Sheet PDF */}
+            <button
+              type="button"
+              className="mas-btn-pdf"
+              onClick={handleExportSignatureSheet}
+              disabled={isExportingSigPdf || people.length === 0}
+              title="Export official College Signature Sheet with student verification & HOD sign-off"
+              style={{
+                borderColor: 'var(--indigo-400, #818cf8)',
+                color: 'var(--indigo-600, #4f46e5)',
+              }}
+            >
+              <FileCheck size={13} />
+              {isExportingSigPdf ? 'Exporting...' : 'Signature Sheet'}
             </button>
 
             {/* Print */}

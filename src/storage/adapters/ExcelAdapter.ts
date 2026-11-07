@@ -393,9 +393,13 @@ export class ExcelAdapter implements StorageAdapter {
 
     try {
       let existingRecords: AttendanceRecord[] = [];
+      let backupPath: string | null = null;
       const fileExists = await this.checkFileExists(targetFilePath);
 
       if (fileExists) {
+        // Safe Rolling Backup: backup existing file before modifying
+        backupPath = await this.createRollingBackup(targetFilePath);
+
         const readResult = await this.readExistingAttendance(targetFilePath);
         if (readResult.success && readResult.records) {
           existingRecords = readResult.records;
@@ -437,13 +441,14 @@ export class ExcelAdapter implements StorageAdapter {
         destination: targetFilePath,
         recordsCount: dataset.records.length,
         timestamp: new Date().toISOString(),
-        message: `Successfully saved and verified ${dataset.records.length} records in sheet '${monthlySheetName}' and '${SEARCH_SHEET_NAME}'. Total entries: ${verification.totalRecordsCount}.`,
+        message: `Successfully saved and verified ${dataset.records.length} records in sheet '${monthlySheetName}' and '${SEARCH_SHEET_NAME}'.${backupPath ? ' (Auto-backup created)' : ''} Total entries: ${verification.totalRecordsCount}.`,
         tabularSummary: {
           totalRows: verification.totalRowsCount ?? 0,
           columns: ['S.No.', 'Name', 'Roll No.', 'Dates...', 'Totals'],
         },
         details: {
           filePath: targetFilePath,
+          backupPath: backupPath || undefined,
           fileSize: verification.fileSize ?? 0,
           sheetNames: verification.sheetNames,
           monthlySheet: monthlySheetName,
@@ -1414,5 +1419,93 @@ export class ExcelAdapter implements StorageAdapter {
       return `Path Error: Directory for '${filePath}' does not exist or cannot be accessed.`;
     }
     return `Excel Save Error: ${msg}`;
+  }
+
+  /**
+   * Resolves the standard backups directory for a given workbook path.
+   */
+  getBackupsDirectory(targetFilePath?: string): string {
+    if (!targetFilePath) return '.rollvia_backups';
+    const normalized = targetFilePath.replace(/\\/g, '/');
+    const lastSlash = normalized.lastIndexOf('/');
+    const parentDir = lastSlash > 0 ? normalized.substring(0, lastSlash) : '.';
+    return `${parentDir}/.rollvia_backups`;
+  }
+
+  /**
+   * Creates a timestamped rolling backup copy of the existing workbook before overwriting.
+   * Keeps the latest 15 backups to prevent data loss while bounding disk usage.
+   */
+  async createRollingBackup(targetFilePath: string): Promise<string | null> {
+    try {
+      const existingBuf = await this.readBufferFromDisk(targetFilePath);
+      if (!existingBuf || existingBuf.length === 0) return null;
+
+      const normalized = targetFilePath.replace(/\\/g, '/');
+      const lastSlash = normalized.lastIndexOf('/');
+      const parentDir = lastSlash > 0 ? normalized.substring(0, lastSlash) : '.';
+      const fileName = lastSlash > 0 ? normalized.substring(lastSlash + 1) : normalized;
+      const baseName = fileName.replace(/\.xlsx$/i, '');
+      const backupDir = `${parentDir}/.rollvia_backups`;
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      const backupFilePath = `${backupDir}/${baseName}_backup_${timestamp}.xlsx`;
+
+      await this.writeBufferToDisk(backupFilePath, existingBuf);
+
+      // Keep latest 15 backups
+      await this.pruneOldBackups(backupDir, baseName, 15);
+
+      return backupFilePath;
+    } catch (err) {
+      console.warn('createRollingBackup warning (non-fatal):', err);
+      return null;
+    }
+  }
+
+  private async pruneOldBackups(backupDir: string, baseName: string, maxBackups = 15): Promise<void> {
+    try {
+      const fsMod = await this.getNodeFS();
+      if (!fsMod) {
+        // Prune in-memory files if running in browser / memory sandbox
+        const prefix = `${backupDir}/${baseName}_backup_`;
+        const memoryBackups = Array.from(this.inMemoryFiles.keys())
+          .filter((k) => k.startsWith(prefix) && k.endsWith('.xlsx'))
+          .sort();
+        if (memoryBackups.length > maxBackups) {
+          const toRemove = memoryBackups.slice(0, memoryBackups.length - maxBackups);
+          for (const k of toRemove) this.inMemoryFiles.delete(k);
+        }
+        return;
+      }
+
+      const dynamicImport = new Function('m', 'return import(m)') as (m: string) => Promise<any>;
+      const pathMod = await dynamicImport('node:path');
+      const fsPromises = await dynamicImport('node:fs/promises');
+
+      if (!fsMod.existsSync(backupDir)) return;
+
+      const files: string[] = await fsPromises.readdir(backupDir);
+      const prefix = `${baseName}_backup_`;
+      const backupFiles = files
+        .filter((f) => f.startsWith(prefix) && f.endsWith('.xlsx'))
+        .sort()
+        .map((f) => pathMod.join(backupDir, f));
+
+      if (backupFiles.length > maxBackups) {
+        const toDelete = backupFiles.slice(0, backupFiles.length - maxBackups);
+        for (const filePath of toDelete) {
+          try {
+            await fsPromises.unlink(filePath);
+          } catch {
+            // Non-fatal
+          }
+        }
+      }
+    } catch {
+      // In-memory or sandbox fallback
+    }
   }
 }

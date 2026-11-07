@@ -23,6 +23,11 @@ import {
 } from '../../utils/monthlyAttendanceSummary';
 import { downloadMonthlySummaryExcel } from '../../utils/monthlySummaryExcelExport';
 import { downloadMonthlySummaryPdf } from '../../utils/monthlySummaryPdfExport';
+import {
+  downloadCollegeSignatureSheetPdf,
+  downloadCollegeSignatureSheetExcel,
+} from '../../utils/collegeSignatureSheetExport';
+import { ShieldCheck, FileCheck } from 'lucide-react';
 
 const EXPORT_THEMES: { id: ExportTheme; label: string; icon: string; desc: string }[] = [
   { id: 'default', label: 'Clean Table (Default)', icon: '📋', desc: 'Minimalist table with names & attendance' },
@@ -324,6 +329,113 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
       }, 500);
     } else {
       window.print();
+    }
+  };
+
+  // ─── 6. Official University Signature Sheet (PDF) ──────────────────────────
+  const handleExportCollegeSignaturePdf = () => {
+    if (people.length === 0) {
+      showFeedback('Cannot export: No students enrolled in Rollvia.', true);
+      return;
+    }
+
+    try {
+      setActiveExport('college-sig-pdf');
+      setIsOpen(false);
+
+      const matrix = computeMonthlyAttendanceMatrix({
+        people,
+        weeklyTimetable,
+        dateScheduleOverrides,
+        noClassDates,
+        savedDailyAttendance,
+        attendanceRecords,
+        year: activeYr,
+        academicYear: academicYear || String(activeYr),
+        startMonthIndex: activeMo,
+        endMonthIndex: activeMo,
+        exportScope,
+      });
+
+      downloadCollegeSignatureSheetPdf(matrix, {
+        institutionName,
+        departmentName,
+        academicYear: academicYear || String(activeYr),
+        minimumAttendanceThreshold: 75,
+      });
+
+      showFeedback('University Signature Sheet (PDF) downloaded', false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error exporting University Signature Sheet PDF.';
+      showFeedback(msg, true);
+    } finally {
+      setActiveExport(null);
+    }
+  };
+
+  // ─── 7. Official University Signature Sheet (Excel) ────────────────────────
+  const handleExportCollegeSignatureExcel = async () => {
+    if (people.length === 0) {
+      showFeedback('Cannot export: No students enrolled in Rollvia.', true);
+      return;
+    }
+
+    try {
+      setActiveExport('college-sig-excel');
+      setIsOpen(false);
+
+      const matrix = computeMonthlyAttendanceMatrix({
+        people,
+        weeklyTimetable,
+        dateScheduleOverrides,
+        noClassDates,
+        savedDailyAttendance,
+        attendanceRecords,
+        year: activeYr,
+        academicYear: academicYear || String(activeYr),
+        startMonthIndex: activeMo,
+        endMonthIndex: activeMo,
+        exportScope,
+      });
+
+      const res = await downloadCollegeSignatureSheetExcel(matrix, {
+        institutionName,
+        departmentName,
+        academicYear: academicYear || String(activeYr),
+        minimumAttendanceThreshold: 75,
+      });
+
+      if (res.success) {
+        showFeedback('University Signature Sheet (Excel) exported', false);
+      } else {
+        showFeedback(res.error || 'Failed to export University Signature Sheet Excel.', true);
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error exporting University Signature Sheet Excel.';
+      showFeedback(msg, true);
+    } finally {
+      setActiveExport(null);
+    }
+  };
+
+  // ─── 8. Open Rolling Backups Folder ────────────────────────────────────────
+  const handleOpenBackupsFolder = () => {
+    setIsOpen(false);
+    if (!excelFilePath) {
+      showFeedback('No Excel file configured yet.', true);
+      return;
+    }
+
+    const electronAPI = (window as unknown as { electronAPI?: { showItemInFolder?: (p: string) => Promise<{ success: boolean }> } }).electronAPI;
+    if (electronAPI?.showItemInFolder) {
+      const normalized = excelFilePath.replace(/\\/g, '/');
+      const lastSlash = normalized.lastIndexOf('/');
+      const parentDir = lastSlash > 0 ? normalized.substring(0, lastSlash) : '.';
+      const backupsDir = `${parentDir}/.rollvia_backups`;
+      electronAPI.showItemInFolder(backupsDir);
+      showFeedback('Opening .rollvia_backups in File Explorer', false);
+    } else {
+      showFeedback('Backups folder is located at: .rollvia_backups', false);
     }
   };
 
@@ -692,7 +804,52 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
 
           <div style={{ height: '1px', backgroundColor: 'var(--border-subtle, #e2e8f0)', margin: '0.35rem 0' }} />
 
-          {/* SECTION 3: Print Action */}
+          {/* SECTION 3: Official University Signature Sheets */}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleExportCollegeSignaturePdf}
+            style={menuItemStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover, #f8fafc)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <div style={{ ...iconContainerStyle, color: 'var(--indigo-600, #4f46e5)', background: 'var(--indigo-50, #eef2ff)' }}>
+              <FileCheck size={15} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary, #0f172a)' }}>
+                University Signature Sheet (PDF)
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>
+                Official format with student & HOD signature boxes (.pdf)
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleExportCollegeSignatureExcel}
+            style={menuItemStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover, #f8fafc)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <div style={{ ...iconContainerStyle, color: 'var(--success-600, #059669)', background: 'var(--success-50, #ecfdf5)' }}>
+              <FileSpreadsheet size={15} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary, #0f172a)' }}>
+                University Signature Sheet (Excel)
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>
+                Official verification spreadsheet with remarks (.xlsx)
+              </div>
+            </div>
+          </button>
+
+          <div style={{ height: '1px', backgroundColor: 'var(--border-subtle, #e2e8f0)', margin: '0.35rem 0' }} />
+
+          {/* SECTION 4: Print Action & Safe Backups */}
           <button
             type="button"
             role="menuitem"
@@ -710,6 +867,27 @@ export const ExportMenu: React.FC<ExportMenuProps> = ({ onOpenMonthlySummary, st
               </div>
               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>
                 Open matrix preview & trigger print
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleOpenBackupsFolder}
+            style={menuItemStyle}
+            onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-surface-hover, #f8fafc)')}
+            onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+          >
+            <div style={{ ...iconContainerStyle, color: 'var(--emerald-600, #059669)', background: 'var(--emerald-50, #ecfdf5)' }}>
+              <ShieldCheck size={15} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary, #0f172a)' }}>
+                Open Safe Backups (.rollvia_backups)
+              </div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted, #64748b)' }}>
+                Show automatic timestamped Excel backups in File Explorer
               </div>
             </div>
           </button>

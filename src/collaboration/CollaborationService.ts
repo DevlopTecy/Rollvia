@@ -122,15 +122,29 @@ export class CollaborationService {
       [`rooms/${code}/presence/${this.myUid}`]: presenceData,
     };
 
-    // Parallel atomic write and onDisconnect registration with timeout
-    await withTimeout(
-      Promise.all([
-        update(rootRef, updates),
-        onDisconnect(myPresenceRef).remove(),
-      ]),
-      8000,
-      'Publishing room timed out. Please check your network connection.'
-    );
+    // Parallel atomic write and onDisconnect registration with generous 30s timeout
+    try {
+      await withTimeout(
+        Promise.all([
+          update(rootRef, updates),
+          onDisconnect(myPresenceRef).remove(),
+        ]),
+        30000,
+        'Publishing room timed out (30s). Please check your internet connection or Firebase App Check settings.'
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (
+        msg.toLowerCase().includes('appcheck') ||
+        msg.toLowerCase().includes('unauthorized') ||
+        msg.toLowerCase().includes('permission_denied')
+      ) {
+        throw new Error(
+          'Firebase App Check is blocking desktop connections. Please open Firebase Console > App Check > Realtime Database and click "Unenforce".'
+        );
+      }
+      throw err;
+    }
   }
 
   public async createRoom(displayName: string, initialState: RoomFirebaseState): Promise<string> {
@@ -157,17 +171,17 @@ export class CollaborationService {
     const stateRef = ref(this.db, `rooms/${code}/state`);
     let snapshot = await withTimeout(
       get(stateRef),
-      3500,
+      15000,
       'Connection timed out while searching for room.'
     ).catch(() => null);
 
-    // If snapshot doesn't exist yet (host optimistic room publishing in progress), retry up to 3 times
+    // If snapshot doesn't exist yet (host room publishing in progress), retry up to 5 times
     if (!snapshot || !snapshot.exists()) {
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        await new Promise((res) => setTimeout(res, 600));
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        await new Promise((res) => setTimeout(res, 1200));
         snapshot = await withTimeout(
           get(stateRef),
-          3000,
+          12000,
           'Connection timed out while retrying room search.'
         ).catch(() => null);
         if (snapshot && snapshot.exists()) break;
@@ -175,7 +189,7 @@ export class CollaborationService {
     }
 
     if (!snapshot || !snapshot.exists()) {
-      throw new Error('Room not found. Please verify the 6-character room code.');
+      throw new Error('Room not found or host has not published it yet. Please verify the 6-character room code.');
     }
 
     this.roomCode = code;
@@ -184,7 +198,7 @@ export class CollaborationService {
 
     // Determine color based on existing presence count
     const presenceRef = ref(this.db, `rooms/${code}/presence`);
-    const presenceSnapshot = await withTimeout(get(presenceRef), 3000, 'Presence fetch timeout').catch(() => null);
+    const presenceSnapshot = await withTimeout(get(presenceRef), 10000, 'Presence fetch timeout').catch(() => null);
     const existingCount = presenceSnapshot && presenceSnapshot.exists()
       ? Object.keys(presenceSnapshot.val() || {}).length
       : 1;
@@ -203,7 +217,7 @@ export class CollaborationService {
         set(myPresenceRef, presenceData),
         onDisconnect(myPresenceRef).remove(),
       ]),
-      4000,
+      12000,
       'Presence registration timeout'
     ).catch(() => {});
 
@@ -421,9 +435,9 @@ export class CollaborationService {
         // As host, signal all connected receivers that session has ended and clean room
         try {
           const endedRef = ref(this.db, `rooms/${code}/ended`);
-          await withTimeout(set(endedRef, true), 1200, 'Signal ended timeout').catch(() => {});
+          await withTimeout(set(endedRef, true), 3000, 'Signal ended timeout').catch(() => {});
           const roomRef = ref(this.db, `rooms/${code}`);
-          await withTimeout(set(roomRef, null), 1200, 'Room removal timeout').catch(() => {});
+          await withTimeout(set(roomRef, null), 3000, 'Room removal timeout').catch(() => {});
         } catch {
           // ignore network error on ending session
         }
@@ -431,7 +445,7 @@ export class CollaborationService {
         // As receiver, remove self from presence
         try {
           const myPresenceRef = ref(this.db, `rooms/${code}/presence/${myUid}`);
-          await withTimeout(set(myPresenceRef, null), 1200, 'Presence cleanup timeout').catch(() => {});
+          await withTimeout(set(myPresenceRef, null), 3000, 'Presence cleanup timeout').catch(() => {});
         } catch {
           // ignore network error on leaving
         }

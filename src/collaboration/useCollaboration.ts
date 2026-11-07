@@ -114,7 +114,13 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
             optionsRef.current?.onRemoteSaveRequested?.(req);
           });
         } catch (publishErr: unknown) {
-          const msg = publishErr instanceof Error ? publishErr.message : 'Failed to publish room.';
+          const rawMsg = publishErr instanceof Error ? publishErr.message : 'Failed to publish room.';
+          const msg =
+            rawMsg.toLowerCase().includes('appcheck') ||
+            rawMsg.toLowerCase().includes('unauthorized') ||
+            rawMsg.toLowerCase().includes('permission_denied')
+              ? 'Firebase App Check is blocking desktop connections. In Firebase Console > App Check > Realtime Database, switch Enforcement to "Unenforce".'
+              : rawMsg;
           setError(msg);
           // Rollback local session if publish failed
           setSession(null);

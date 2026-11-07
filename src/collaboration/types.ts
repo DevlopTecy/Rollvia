@@ -1,4 +1,4 @@
-import type { Person, ClassSession } from '../types';
+import type { Person, ClassSession, WeeklyTimetable } from '../types';
 
 export type UserRole = 'sender' | 'receiver' | null;
 
@@ -24,7 +24,7 @@ export interface RoomAttendanceUpdate {
   date: string;
   personId: string;
   classId: string;
-  value: boolean;
+  value: boolean | null;
 }
 
 export interface RoomFirebaseState {
@@ -35,6 +35,10 @@ export interface RoomFirebaseState {
   holidayReasons: Record<string, string>;
   academicYear: string;
   departmentName: string;
+  weeklyTimetable?: WeeklyTimetable;
+  dateScheduleOverrides?: Record<string, string[]>;
+  selectedMonthIndex?: number;
+  selectedYear?: number;
 }
 
 export interface RoomSaveRequest {

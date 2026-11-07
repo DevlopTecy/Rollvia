@@ -180,16 +180,27 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
         holidayReasons: s.holidayReasons || {},
         academicYear: s.academicYear || '',
         departmentName: s.departmentName || '',
+        weeklyTimetable: s.weeklyTimetable,
+        dateScheduleOverrides: s.dateScheduleOverrides || {},
+        selectedMonthIndex: s.selectedMonthIndex,
+        selectedYear: s.selectedYear,
       };
     },
-    onRemoteStateReceived: (remoteState) => {
+    onRemoteStateReceived: (remoteState, role) => {
       setSessionState((prev) => {
-        const isReceiver = collaboration.session?.role === 'receiver';
+        const isReceiver =
+          role === 'receiver' ||
+          collaboration.session?.role === 'receiver' ||
+          Boolean(remoteState.roster && remoteState.roster.length > 0);
         const incomingAttendance = remoteState.attendance || {};
         const newPeople = isReceiver && remoteState.roster ? remoteState.roster : prev.people;
         const newClasses = isReceiver && remoteState.classes ? remoteState.classes : prev.classes;
         const newNoClassDates = isReceiver && remoteState.noClassDates ? remoteState.noClassDates : prev.noClassDates;
         const newHolidayReasons = isReceiver && remoteState.holidayReasons ? remoteState.holidayReasons : prev.holidayReasons;
+        const newWeeklyTimetable = isReceiver && remoteState.weeklyTimetable ? remoteState.weeklyTimetable : prev.weeklyTimetable;
+        const newDateOverrides = isReceiver && remoteState.dateScheduleOverrides ? remoteState.dateScheduleOverrides : prev.dateScheduleOverrides;
+        const newMonthIndex = isReceiver && typeof remoteState.selectedMonthIndex === 'number' ? remoteState.selectedMonthIndex : prev.selectedMonthIndex;
+        const newYear = isReceiver && typeof remoteState.selectedYear === 'number' ? remoteState.selectedYear : prev.selectedYear;
 
         return {
           ...prev,
@@ -198,6 +209,10 @@ export const FlowProvider: React.FC<{ children: React.ReactNode }> = ({ children
           peopleCount: newPeople.length,
           members: isReceiver ? syncPeopleToMembers(newPeople) : prev.members,
           classes: newClasses,
+          weeklyTimetable: newWeeklyTimetable,
+          dateScheduleOverrides: newDateOverrides,
+          selectedMonthIndex: newMonthIndex,
+          selectedYear: newYear,
           noClassDates: newNoClassDates,
           holidayReasons: newHolidayReasons,
           savedDailyAttendance: incomingAttendance as any,

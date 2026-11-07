@@ -270,19 +270,26 @@ export const AttendanceGrid: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   });
 
-  const setCellStatus = (personId: string, subjectId: string, subjectName: string, present: boolean) => {
+  const setCellStatus = (
+    personId: string,
+    subjectId: string,
+    subjectName: string,
+    present: boolean | null
+  ) => {
     setIsEditingActiveDate(true);
     const current = editedData[activeDate] ?? savedAttendance;
     pushUndo(current);
     setEditedData((prev) => {
       const prevDay: Record<string, Record<string, boolean>> = prev[activeDate] ?? { ...savedAttendance };
-      const prevPerson: Record<string, boolean> = prevDay[personId] ?? {};
-      const newPerson: Record<string, boolean> = {
-        ...prevPerson,
-        [subjectId]: present,
-        [subjectName]: present,
-      };
-      const newDay: Record<string, Record<string, boolean>> = { ...prevDay, [personId]: newPerson };
+      const prevPerson: Record<string, boolean> = { ...(prevDay[personId] ?? {}) };
+      if (present === null) {
+        delete prevPerson[subjectId];
+        if (subjectName) delete prevPerson[subjectName];
+      } else {
+        prevPerson[subjectId] = present;
+        if (subjectName) prevPerson[subjectName] = present;
+      }
+      const newDay: Record<string, Record<string, boolean>> = { ...prevDay, [personId]: prevPerson };
       saveRecoveryDraft(activeDate, newDay);
       return { ...prev, [activeDate]: newDay };
     });
@@ -1562,7 +1569,10 @@ export const AttendanceGrid: React.FC = () => {
                           >
                             <button
                               type="button"
-                              onClick={() => setCellStatus(person.id, sub.id, sub.name, true)}
+                              onClick={() => {
+                                const nextVal = hasRecord && isPresent ? null : true;
+                                setCellStatus(person.id, sub.id, sub.name, nextVal);
+                              }}
                               style={{
                                 padding: '3px 8px',
                                 fontSize: '0.75rem',
@@ -1581,13 +1591,16 @@ export const AttendanceGrid: React.FC = () => {
                                 lineHeight: '1.2',
                                 boxShadow: hasRecord && isPresent ? '0 1px 3px rgba(16,185,129,0.3)' : 'none',
                               }}
-                              title={`Mark ${person.name} Present for ${sub.name}`}
+                              title={hasRecord && isPresent ? `Unselect Present for ${person.name}` : `Mark ${person.name} Present for ${sub.name}`}
                             >
                               P
                             </button>
                             <button
                               type="button"
-                              onClick={() => setCellStatus(person.id, sub.id, sub.name, false)}
+                              onClick={() => {
+                                const nextVal = hasRecord && !isPresent ? null : false;
+                                setCellStatus(person.id, sub.id, sub.name, nextVal);
+                              }}
                               style={{
                                 padding: '3px 8px',
                                 fontSize: '0.75rem',
@@ -1606,7 +1619,7 @@ export const AttendanceGrid: React.FC = () => {
                                 lineHeight: '1.2',
                                 boxShadow: hasRecord && !isPresent ? '0 1px 3px rgba(239,68,68,0.3)' : 'none',
                               }}
-                              title={`Mark ${person.name} Absent for ${sub.name}`}
+                              title={hasRecord && !isPresent ? `Unselect Absent for ${person.name}` : `Mark ${person.name} Absent for ${sub.name}`}
                             >
                               A
                             </button>

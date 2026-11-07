@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { CollaborationService } from './CollaborationService';
 import type {
+  UserRole,
   CollaborationSession,
   CollaboratorPresence,
   RoomFirebaseState,
@@ -13,13 +14,17 @@ const STORAGE_KEY_NAME = 'rollvia_connection_name';
 
 export interface UseCollaborationOptions {
   getSnapshot?: () => RoomFirebaseState;
-  onRemoteStateReceived?: (state: RoomFirebaseState) => void;
+  onRemoteStateReceived?: (state: RoomFirebaseState, role?: UserRole) => void;
   onRemoteAttendanceCell?: (update: RoomAttendanceUpdate) => void;
   onRemoteSaveRequested?: (req: RoomSaveRequest) => void;
 }
 
 export const useCollaboration = (options?: UseCollaborationOptions) => {
   const serviceRef = useRef<CollaborationService | null>(null);
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  }, [options]);
 
   const [session, setSession] = useState<CollaborationSession | null>(null);
   const [collaborators, setCollaborators] = useState<Record<string, CollaboratorPresence>>({});
@@ -54,12 +59,31 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
     setError(null);
   }, []);
 
+  const leaveRoom = useCallback(async (): Promise<void> => {
+    setIsConnecting(false);
+    setSession(null);
+    setCollaborators({});
+    setError(null);
+    try {
+      if (serviceRef.current) {
+        await serviceRef.current.leaveRoom();
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const cancelConnecting = useCallback(async (): Promise<void> => {
+    setIsConnecting(false);
+    await leaveRoom();
+  }, [leaveRoom]);
+
   const createRoom = useCallback(
     async (customSnapshot?: RoomFirebaseState): Promise<string> => {
       setError(null);
       try {
         const service = getService();
-        const snapshot = customSnapshot || options?.getSnapshot?.();
+        const snapshot = customSnapshot || optionsRef.current?.getSnapshot?.();
         if (!snapshot) {
           throw new Error('Unable to capture attendance snapshot to host room.');
         }
@@ -82,12 +106,12 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
 
           // Listen for state changes (e.g. from receivers)
           service.subscribeState((remoteState) => {
-            options?.onRemoteStateReceived?.(remoteState);
+            optionsRef.current?.onRemoteStateReceived?.(remoteState, 'sender');
           });
 
           // Listen for remote save requests from receivers
           service.subscribeSaveRequest((req) => {
-            options?.onRemoteSaveRequested?.(req);
+            optionsRef.current?.onRemoteSaveRequested?.(req);
           });
         } catch (publishErr: unknown) {
           const msg = publishErr instanceof Error ? publishErr.message : 'Failed to publish room.';
@@ -106,7 +130,7 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
         throw err;
       }
     },
-    [connectionName, getService, options]
+    [connectionName, getService]
   );
 
   const joinRoom = useCallback(
@@ -116,27 +140,37 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
       try {
         const service = getService();
         const name = connectionName.trim() || 'Collaborator';
+        const sanitizedCode = roomCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
-        await service.joinRoom(
-          roomCode,
-          name,
-          (remoteState) => {
-            options?.onRemoteStateReceived?.(remoteState);
-          },
-          (presence) => {
-            setCollaborators(presence);
-          }
-        );
-
+        // 1. Establish session optimistically so role='receiver' is available immediately
         const newSession: CollaborationSession = {
-          roomCode: service.roomCode!,
+          roomCode: sanitizedCode,
           role: 'receiver',
           myUid: service.myUid,
           myColor: service.myColor,
           myDisplayName: name,
         };
         setSession(newSession);
+
+        // 2. Join room in Firebase
+        await service.joinRoom(
+          sanitizedCode,
+          name,
+          (remoteState) => {
+            optionsRef.current?.onRemoteStateReceived?.(remoteState, 'receiver');
+          },
+          (presence) => {
+            setCollaborators(presence);
+          },
+          () => {
+            // Host ended room callback
+            setSession(null);
+            setCollaborators({});
+            setError('The host has ended this collaboration session.');
+          }
+        );
       } catch (err: unknown) {
+        setSession(null);
         const msg = err instanceof Error ? err.message : 'Failed to join room.';
         setError(msg);
         throw err;
@@ -144,20 +178,8 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
         setIsConnecting(false);
       }
     },
-    [connectionName, getService, options]
+    [connectionName, getService]
   );
-
-  const leaveRoom = useCallback(async (): Promise<void> => {
-    try {
-      if (serviceRef.current) {
-        await serviceRef.current.leaveRoom();
-      }
-    } finally {
-      setSession(null);
-      setCollaborators({});
-      setError(null);
-    }
-  }, []);
 
   const updateMyCursor = useCallback(
     (date: string, personId: string) => {
@@ -243,6 +265,7 @@ export const useCollaboration = (options?: UseCollaborationOptions) => {
     createRoom,
     joinRoom,
     leaveRoom,
+    cancelConnecting,
     updateMyCursor,
     clearMyCursor,
     broadcastAttendanceCell,

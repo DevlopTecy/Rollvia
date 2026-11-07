@@ -25,6 +25,7 @@ export const ProfilePanel: React.FC = () => {
     createRoom,
     joinRoom,
     leaveRoom,
+    cancelConnecting,
     isConnecting,
     error,
     clearError,
@@ -75,10 +76,11 @@ export const ProfilePanel: React.FC = () => {
   };
 
   const handleJoinReceiver = async () => {
-    if (!joinCodeInput.trim()) return;
+    const cleaned = joinCodeInput.replace(/[^A-Z0-9]/gi, '').trim();
+    if (!cleaned) return;
     try {
       clearError();
-      await joinRoom(joinCodeInput.trim());
+      await joinRoom(cleaned);
     } catch {
       // error is handled in hook
     }
@@ -227,6 +229,39 @@ export const ProfilePanel: React.FC = () => {
             disabled={isConnecting}
             helperText="Display name shown to collaborators."
           />
+
+          {/* Active Session Quick Bar (always visible when connected) */}
+          {session && (
+            <div
+              style={{
+                padding: '8px 10px',
+                borderRadius: 'var(--radius-sm, 6px)',
+                backgroundColor: session.role === 'sender' ? 'rgba(79, 70, 229, 0.08)' : 'rgba(16, 185, 129, 0.08)',
+                border: session.role === 'sender' ? '1px solid rgba(79, 70, 229, 0.25)' : '1px solid rgba(16, 185, 129, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 700 }}>
+                  Active {session.role === 'sender' ? 'Host Session' : 'Receiver Room'}
+                </span>
+                <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', letterSpacing: 1.5, color: session.role === 'sender' ? 'var(--primary-600)' : 'var(--success-600)' }}>
+                  {session.roomCode.slice(0, 3)}-{session.roomCode.slice(3)}
+                </span>
+              </div>
+              <Button
+                variant={session.role === 'sender' ? 'danger' : 'secondary'}
+                size="sm"
+                icon={<LogOut size={12} />}
+                onClick={handleLeave}
+              >
+                {session.role === 'sender' ? 'End Session' : 'Leave Room'}
+              </Button>
+            </div>
+          )}
 
           {/* Role Tabs */}
           <div
@@ -417,23 +452,43 @@ export const ProfilePanel: React.FC = () => {
                   </Button>
                 </>
               ) : session?.role === 'receiver' ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                  You are currently joined to Room <strong>{session.roomCode}</strong> as a Receiver.
-                  Leave that room to host a new session.
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div>You are currently joined to Room <strong>{session.roomCode}</strong> as a Receiver. Leave that room to host a new session.</div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<LogOut size={13} />}
+                    onClick={handleLeave}
+                  >
+                    Leave Room
+                  </Button>
                 </div>
               ) : (
                 <>
                   <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.4 }}>
                     Start a session from this laptop. All attendance records will be saved directly on your PC.
                   </p>
-                  <Button
-                    variant="primary"
-                    size="md"
-                    loading={isConnecting}
-                    onClick={handleStartSender}
-                  >
-                    Start as Sender
-                  </Button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <Button
+                      variant="primary"
+                      size="md"
+                      loading={isConnecting}
+                      onClick={handleStartSender}
+                      style={{ flex: 1 }}
+                    >
+                      Start as Sender
+                    </Button>
+                    {isConnecting && (
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        onClick={cancelConnecting}
+                        style={{ color: 'var(--danger-600)' }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -472,9 +527,16 @@ export const ProfilePanel: React.FC = () => {
                   </Button>
                 </>
               ) : session?.role === 'sender' ? (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                  You are currently hosting Room <strong>{session.roomCode}</strong> as Sender.
-                  End your session if you wish to join another room as Receiver.
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div>You are currently hosting Room <strong>{session.roomCode}</strong> as Sender. End your session if you wish to join another room as Receiver.</div>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon={<LogOut size={13} />}
+                    onClick={handleLeave}
+                  >
+                    End Session
+                  </Button>
                 </div>
               ) : (
                 <>
@@ -482,22 +544,35 @@ export const ProfilePanel: React.FC = () => {
                     Enter the 6-character Room Code provided by the Sender:
                   </p>
                   <Input
-                    placeholder="e.g. KD7421"
+                    placeholder="e.g. KD7-421"
                     value={joinCodeInput}
-                    maxLength={7}
-                    onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                    maxLength={8}
+                    onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
                     disabled={isConnecting}
                     style={{ textTransform: 'uppercase', fontFamily: 'monospace', letterSpacing: 2, fontWeight: 700 }}
                   />
-                  <Button
-                    variant="primary"
-                    size="md"
-                    loading={isConnecting}
-                    disabled={joinCodeInput.trim().length < 4}
-                    onClick={handleJoinReceiver}
-                  >
-                    Join Session
-                  </Button>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                    <Button
+                      variant="primary"
+                      size="md"
+                      loading={isConnecting}
+                      disabled={joinCodeInput.replace(/[^A-Z0-9]/gi, '').trim().length < 4}
+                      onClick={handleJoinReceiver}
+                      style={{ flex: 1 }}
+                    >
+                      Join Session
+                    </Button>
+                    {isConnecting && (
+                      <Button
+                        variant="secondary"
+                        size="md"
+                        onClick={cancelConnecting}
+                        style={{ color: 'var(--danger-600)' }}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </>
               )}
             </div>

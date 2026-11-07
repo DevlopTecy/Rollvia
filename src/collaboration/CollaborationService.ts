@@ -30,6 +30,14 @@ export const COLOR_PALETTE = [
   '#06b6d4', // Cyan
 ] as const;
 
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(errorMsg)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+}
+
 export class CollaborationService {
   private app: FirebaseApp;
   private db: Database;
@@ -110,14 +118,19 @@ export class CollaborationService {
     const updates: Record<string, unknown> = {
       [`rooms/${code}/state`]: initialState,
       [`rooms/${code}/createdAt`]: Date.now(),
+      [`rooms/${code}/ended`]: false,
       [`rooms/${code}/presence/${this.myUid}`]: presenceData,
     };
 
-    // Parallel atomic write and onDisconnect registration
-    await Promise.all([
-      update(rootRef, updates),
-      onDisconnect(myPresenceRef).remove(),
-    ]);
+    // Parallel atomic write and onDisconnect registration with timeout
+    await withTimeout(
+      Promise.all([
+        update(rootRef, updates),
+        onDisconnect(myPresenceRef).remove(),
+      ]),
+      8000,
+      'Publishing room timed out. Please check your network connection.'
+    );
   }
 
   public async createRoom(displayName: string, initialState: RoomFirebaseState): Promise<string> {
@@ -131,7 +144,8 @@ export class CollaborationService {
     roomCodeInput: string,
     displayName: string,
     onStateSnapshot: (state: RoomFirebaseState) => void,
-    onPresenceUpdate: (presence: Record<string, CollaboratorPresence>) => void
+    onPresenceUpdate: (presence: Record<string, CollaboratorPresence>) => void,
+    onRoomEnded?: () => void
   ): Promise<void> {
     await this.leaveRoom();
 
@@ -141,19 +155,27 @@ export class CollaborationService {
     }
 
     const stateRef = ref(this.db, `rooms/${code}/state`);
-    let snapshot = await get(stateRef);
+    let snapshot = await withTimeout(
+      get(stateRef),
+      3500,
+      'Connection timed out while searching for room.'
+    ).catch(() => null);
 
-    // If snapshot doesn't exist yet (host optimistic room publishing in progress), retry up to 4 times
-    if (!snapshot.exists()) {
-      for (let attempt = 1; attempt <= 4; attempt++) {
-        await new Promise((res) => setTimeout(res, 800));
-        snapshot = await get(stateRef);
-        if (snapshot.exists()) break;
+    // If snapshot doesn't exist yet (host optimistic room publishing in progress), retry up to 3 times
+    if (!snapshot || !snapshot.exists()) {
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        await new Promise((res) => setTimeout(res, 600));
+        snapshot = await withTimeout(
+          get(stateRef),
+          3000,
+          'Connection timed out while retrying room search.'
+        ).catch(() => null);
+        if (snapshot && snapshot.exists()) break;
       }
     }
 
-    if (!snapshot.exists()) {
-      throw new Error('Room not found. Please verify the room code.');
+    if (!snapshot || !snapshot.exists()) {
+      throw new Error('Room not found. Please verify the 6-character room code.');
     }
 
     this.roomCode = code;
@@ -162,8 +184,8 @@ export class CollaborationService {
 
     // Determine color based on existing presence count
     const presenceRef = ref(this.db, `rooms/${code}/presence`);
-    const presenceSnapshot = await get(presenceRef);
-    const existingCount = presenceSnapshot.exists()
+    const presenceSnapshot = await withTimeout(get(presenceRef), 3000, 'Presence fetch timeout').catch(() => null);
+    const existingCount = presenceSnapshot && presenceSnapshot.exists()
       ? Object.keys(presenceSnapshot.val() || {}).length
       : 1;
     this.myColor = COLOR_PALETTE[Math.min(existingCount, COLOR_PALETTE.length - 1)];
@@ -176,23 +198,44 @@ export class CollaborationService {
       joinedAt: Date.now(),
     };
 
-    await set(myPresenceRef, presenceData);
-    await onDisconnect(myPresenceRef).remove();
+    await withTimeout(
+      Promise.all([
+        set(myPresenceRef, presenceData),
+        onDisconnect(myPresenceRef).remove(),
+      ]),
+      4000,
+      'Presence registration timeout'
+    ).catch(() => {});
 
     // Subscribe to state and presence
-    this.subscribeState(onStateSnapshot);
+    this.subscribeState(onStateSnapshot, onRoomEnded);
     this.subscribePresence(onPresenceUpdate);
   }
 
-  public subscribeState(onStateSnapshot: (state: RoomFirebaseState) => void): () => void {
+  public subscribeState(
+    onStateSnapshot: (state: RoomFirebaseState) => void,
+    onRoomEnded?: () => void
+  ): () => void {
     if (!this.roomCode) return () => {};
 
-    const stateRef = ref(this.db, `rooms/${this.roomCode}/state`);
-    const unsub = onValue(
+    const code = this.roomCode;
+    const stateRef = ref(this.db, `rooms/${code}/state`);
+    const endedRef = ref(this.db, `rooms/${code}/ended`);
+
+    const unsubEnded = onValue(endedRef, (snapshot) => {
+      if (snapshot.exists() && snapshot.val() === true) {
+        onRoomEnded?.();
+      }
+    });
+
+    const unsubState = onValue(
       stateRef,
       (snapshot) => {
         if (snapshot.exists()) {
           onStateSnapshot(snapshot.val() as RoomFirebaseState);
+        } else if (this.role === 'receiver') {
+          // Room state removed by host
+          onRoomEnded?.();
         }
       },
       (error) => {
@@ -200,8 +243,12 @@ export class CollaborationService {
       }
     );
 
-    this.unsubscribes.push(unsub);
-    return unsub;
+    const compositeUnsub = () => {
+      unsubEnded();
+      unsubState();
+    };
+    this.unsubscribes.push(compositeUnsub);
+    return compositeUnsub;
   }
 
   public subscribePresence(
@@ -237,7 +284,7 @@ export class CollaborationService {
   public async batchPushAttendance(updates: RoomAttendanceUpdate[]): Promise<void> {
     if (!this.roomCode || updates.length === 0) return;
 
-    const payload: Record<string, boolean> = {};
+    const payload: Record<string, boolean | null> = {};
     for (const u of updates) {
       payload[`rooms/${this.roomCode}/state/attendance/${u.date}/${u.personId}/${u.classId}`] = u.value;
     }
@@ -351,7 +398,7 @@ export class CollaborationService {
   }
 
   public async leaveRoom(): Promise<void> {
-    // Unsubscribe from real-time events
+    // Unsubscribe from real-time events immediately
     this.unsubscribes.forEach((unsub) => {
       try {
         unsub();
@@ -361,17 +408,34 @@ export class CollaborationService {
     });
     this.unsubscribes = [];
 
-    // Remove self from presence
-    if (this.roomCode && this.myUid) {
-      try {
-        const myPresenceRef = ref(this.db, `rooms/${this.roomCode}/presence/${this.myUid}`);
-        await set(myPresenceRef, null);
-      } catch {
-        // ignore network error on leaving
-      }
-    }
+    const code = this.roomCode;
+    const isSender = this.role === 'sender';
+    const myUid = this.myUid;
 
+    // Reset local state synchronously so caller can continue immediately
     this.roomCode = null;
     this.role = null;
+
+    if (code) {
+      if (isSender) {
+        // As host, signal all connected receivers that session has ended and clean room
+        try {
+          const endedRef = ref(this.db, `rooms/${code}/ended`);
+          await withTimeout(set(endedRef, true), 1200, 'Signal ended timeout').catch(() => {});
+          const roomRef = ref(this.db, `rooms/${code}`);
+          await withTimeout(set(roomRef, null), 1200, 'Room removal timeout').catch(() => {});
+        } catch {
+          // ignore network error on ending session
+        }
+      } else if (myUid) {
+        // As receiver, remove self from presence
+        try {
+          const myPresenceRef = ref(this.db, `rooms/${code}/presence/${myUid}`);
+          await withTimeout(set(myPresenceRef, null), 1200, 'Presence cleanup timeout').catch(() => {});
+        } catch {
+          // ignore network error on leaving
+        }
+      }
+    }
   }
 }

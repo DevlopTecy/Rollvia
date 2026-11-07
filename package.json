@@ -2,7 +2,7 @@
   "name": "rollvia",
   "productName": "Rollvia",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Rollvia - Modern Windows Desktop Attendance Management Application",
   "author": "Rollvia",
   "main": "electron/main.cjs",
